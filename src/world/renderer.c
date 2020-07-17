@@ -11,6 +11,10 @@
 #include "vulkan/vulkan_core.h"
 #include "sx/io.h"
 #include "resource/gltf_importer.h"
+#include "world/terrain_system.h"
+
+#define VOLK_IMPLEMENTATION
+#include "volk/volk.h"
 
 
 #define DDSKTX_IMPLEMENT
@@ -24,19 +28,20 @@ SX_PRAGMA_DIAGNOSTIC_IGNORED_CLANG_GCC("-Wunused-function")
 #include "dds-ktx/dds-ktx.h"
 SX_PRAGMA_DIAGNOSTIC_POP()
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb/stb_image.h"
+/*#define STB_IMAGE_IMPLEMENTATION*/
+/*#include "stb/stb_image.h"*/
+    
 
 
-#define VK_IMPORT_FUNC(_func) PFN_##_func _func
-#define VK_IMPORT_INSTANCE_FUNC VK_IMPORT_FUNC
-#define VK_IMPORT_DEVICE_FUNC   VK_IMPORT_FUNC
-VK_IMPORT
-VK_IMPORT_INSTANCE
-VK_IMPORT_DEVICE
-#undef VK_IMPORT_DEVICE_FUNC
-#undef VK_IMPORT_INSTANCE_FUNC
-#undef VK_IMPORT_FUNC
+/*#define VK_IMPORT_FUNC(_func) PFN_##_func _func*/
+/*#define VK_IMPORT_INSTANCE_FUNC VK_IMPORT_FUNC*/
+/*#define VK_IMPORT_DEVICE_FUNC   VK_IMPORT_FUNC*/
+/*VK_IMPORT*/
+/*VK_IMPORT_INSTANCE*/
+/*VK_IMPORT_DEVICE*/
+/*#undef VK_IMPORT_DEVICE_FUNC*/
+/*#undef VK_IMPORT_INSTANCE_FUNC*/
+/*#undef VK_IMPORT_FUNC*/
 
 int RENDERING_RESOURCES_SIZE = 2;
 
@@ -48,128 +53,6 @@ typedef struct GlobaUBO {
     sx_vec4 exposure_gama;
 } GlobalUBO;
 
-typedef struct TerrainUBO {
-    sx_vec4 frustum_planes[6];
-    sx_vec2 viewport_dimensions;
-    float displacement_factor;
-    float tessellation_factor;
-    float tessellated_edge_size;
-    float pad;
-} TerrainUBO;
-
-
-typedef struct Swapchain {
-    VkSwapchainKHR swapchain;
-    VkSurfaceFormatKHR format;
-    VkImage images[4];
-    VkImageView image_views[4];
-} Swapchain;
-
-typedef struct Device {
-    VkPhysicalDevice physical_device;
-    VkDevice logical_device;
-    VkSurfaceKHR presentation_surface;
-} Device;
-
-
-/*typedef struct RendererContext {{{*/
-typedef struct RendererContext {
-    VkDebugUtilsMessengerEXT vk_debugmessenger;
-    VkInstance vk_instance;
-
-    Device device;
-
-    uint32_t graphic_queue_index;
-    uint32_t present_queue_index;
-    uint32_t transfer_queue_index;
-
-    VkQueue  vk_graphic_queue;
-    VkQueue  vk_present_queue;
-    VkQueue  vk_transfer_queue;
-
-    VkCommandPool present_queue_cmdpool;
-    VkCommandPool graphic_queue_cmdpool;
-    VkCommandPool transfer_queue_cmdpool;
-
-    VkCommandBuffer* present_queue_cmdbuffer;
-    VkCommandBuffer* graphic_queue_cmdbuffer;
-    VkCommandBuffer transfer_queue_cmdbuffer;
-    VkCommandBuffer copy_cmdbuffer;
-
-    VkSemaphore *image_available_semaphore;
-    VkSemaphore *rendering_finished_semaphore;
-    VkFence *fences;
-
-    Swapchain swapchain;
-    ImageBuffer depth_image;
-    /* G-Buffer */
-    ImageBuffer position_image;
-    ImageBuffer normal_image;
-    ImageBuffer albedo_image;
-    ImageBuffer metallic_roughness_image;
-
-    VkPipelineLayout terrain_pipeline_layout;
-    VkPipelineLayout skybox_pipeline_layout;
-    VkPipelineLayout objects_pipeline_layout;
-    VkPipelineLayout composition_pipeline_layout;
-    VkPipelineLayout transparent_pipeline_layout;
-    VkPipeline terrain_pipeline;
-    VkPipeline skybox_pipeline;
-    VkPipeline objects_pipeline;
-    VkPipeline composition_pipeline;
-    VkPipeline transparent_pipeline;
-
-    VkRenderPass render_pass;
-    VkFramebuffer* framebuffer;
-
-    Buffer staging_buffer;
-
-    VkDescriptorPool global_descriptor_pool;
-    VkDescriptorPool skybox_descriptor_pool;
-    VkDescriptorPool terrain_descriptor_pool;
-    VkDescriptorPool objects_descriptor_pool;
-    VkDescriptorPool composition_descriptor_pool;
-    VkDescriptorPool transparent_descriptor_pool;
-
-    VkDescriptorSetLayout global_descriptor_layout;
-    VkDescriptorSetLayout skybox_descriptor_layout;
-    VkDescriptorSetLayout terrain_descriptor_layout;
-    VkDescriptorSetLayout objects_descriptor_layout;
-    VkDescriptorSetLayout composition_descriptor_layout;
-    VkDescriptorSetLayout transparent_descriptor_layout;
-
-    VkDescriptorSet global_descriptor_set;
-    VkDescriptorSet skybox_descriptor_set;
-    VkDescriptorSet terrain_descriptor_set;
-    VkDescriptorSet objects_descriptor_set;
-    VkDescriptorSet composition_descriptor_set;
-    VkDescriptorSet transparent_descriptor_set;
-
-    Buffer vertex_buffer_sky;
-    Buffer index_buffer_sky;
-    Texture cubemap_texture;
-
-    //Global shader data
-    Texture lut_brdf;
-    Texture irradiance_cube;
-    Texture prefiltered_cube;
-    Buffer global_uniform_buffer;
-
-    // Terrain shader data
-    Buffer vertex_buffer_terrain;
-    Buffer index_buffer_terrain;
-    Texture terrain_layers;
-    Texture terrain_heightmap;
-    Texture terrain_normal;
-    Buffer terrain_uniform_buffer;
-
-    uint32_t width;
-    uint32_t height;
-    uint32_t attchments_width;
-    uint32_t attchments_height;
-
-} RendererContext;
-/*}}}*/
 
 void *vulkan_library;
 static RendererContext vk_context;
@@ -197,17 +80,8 @@ void clear_image(Device* device, ImageBuffer* image);
 
 VkResult create_attachments(RendererContext* context);
 
-VkResult create_buffer(Device* device, Buffer* buffer, VkBufferUsageFlags usage, 
-                       VkMemoryPropertyFlags memory_properties_flags, VkDeviceSize size);
 
-VkResult copy_buffer(Device* device, Buffer* dst_buffer, void* data, VkDeviceSize size);
-
-VkResult copy_buffer_staged(Device* device, VkCommandBuffer copy_cmdbuffer, VkQueue copy_queue,
-                            Buffer* dst_buffer, void* data, VkDeviceSize size);
-
-VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, const char* filepath);
-
-VkResult create_cubemap(Device* device, Texture* cubemap);
+/*VkResult create_cubemap(Device* device, Texture* cubemap);*/
 
 VkPipelineShaderStageCreateInfo load_shader(VkDevice logical_device, const char* filnename, VkShaderStageFlagBits stage);
 
@@ -217,9 +91,13 @@ VkResult setup_framebuffer(RendererContext* context, bool update_attachments);
 
 VkResult build_commandbuffers(RendererContext* context, Renderer* rd);
 
-bool vk_renderer_draw(RendererContext* context, float dt);
+VkResult create_command_buffers();
+void destroy_command_buffers();
+
+bool vk_renderer_draw(RendererContext* context, Renderer* rd, float dt);
 
 enum side { LEFT = 0, RIGHT = 1, TOP = 2, BOTTOM = 3, BACK = 4, FRONT = 5 };
+/* bool update_uniform_buffer() {{{*/
 bool update_uniform_buffer() {
         GlobalUBO ubo;
         /*orth_proj_matrix(proj_matrix, -WIDTH/2, WIDTH/2, -HEIGHT/2, HEIGHT/2, 1000, -1000);*/
@@ -236,72 +114,27 @@ bool update_uniform_buffer() {
         /*ubo.view.col4 = SX_VEC4_ZERO;*/
         /*memcpy(&ubo.view, &vk_context.camera->view, 16 * sizeof(float));*/
         /*mat4_transpose(res_matrix, m);*/
-        copy_buffer(&vk_context.device, &vk_context.global_uniform_buffer,  &ubo, sizeof(ubo));
+        copy_buffer(&vk_context.global_uniform_buffer,  &ubo, sizeof(ubo));
 
-        sx_vec4 planes[6];
-        sx_mat4 matrix = sx_mat4_mul(&ubo.projection, &ubo.view);
-
-        planes[LEFT].x = matrix.col1.w + matrix.col1.x;
-        planes[LEFT].y = matrix.col2.w + matrix.col2.x;
-        planes[LEFT].z = matrix.col3.w + matrix.col3.x;
-        planes[LEFT].w = matrix.col4.w + matrix.col4.x;
-
-        planes[RIGHT].x = matrix.col1.w - matrix.col1.x;
-        planes[RIGHT].y = matrix.col2.w - matrix.col2.x;
-        planes[RIGHT].z = matrix.col3.w - matrix.col3.x;
-        planes[RIGHT].w = matrix.col4.w - matrix.col4.x;
-
-        planes[TOP].x = matrix.col1.w - matrix.col1.y;
-        planes[TOP].y = matrix.col2.w - matrix.col2.y;
-        planes[TOP].z = matrix.col3.w - matrix.col3.y;
-        planes[TOP].w = matrix.col4.w - matrix.col4.y;
-
-        planes[BOTTOM].x = matrix.col1.w + matrix.col1.y;
-        planes[BOTTOM].y = matrix.col2.w + matrix.col2.y;
-        planes[BOTTOM].z = matrix.col3.w + matrix.col3.y;
-        planes[BOTTOM].w = matrix.col4.w + matrix.col4.y;
-
-        planes[BACK].x = matrix.col1.w + matrix.col1.z;
-        planes[BACK].y = matrix.col2.w + matrix.col2.z;
-        planes[BACK].z = matrix.col3.w + matrix.col3.z;
-        planes[BACK].w = matrix.col4.w + matrix.col4.z;
-
-        planes[FRONT].x = matrix.col1.w - matrix.col1.z;
-        planes[FRONT].y = matrix.col2.w - matrix.col2.z;
-        planes[FRONT].z = matrix.col3.w - matrix.col3.z;
-        planes[FRONT].w = matrix.col4.w - matrix.col4.z;
-
-        for (int i = 0; i < 6; i++) {
-            float length = sqrtf(planes[i].x * planes[i].x + planes[i].y * planes[i].y + planes[i].z * planes[i].z);
-            planes[i].x /= length;
-            planes[i].y /= length;
-            planes[i].z /= length;
-            planes[i].w /= length;
-        }
-        TerrainUBO terrain_ubo;
-        sx_memcpy(terrain_ubo.frustum_planes, planes, 6 * sizeof(sx_vec4));
-        terrain_ubo.viewport_dimensions.x = vk_context.width;
-        terrain_ubo.viewport_dimensions.y = vk_context.height;
-        terrain_ubo.displacement_factor = 1300.0;
-        terrain_ubo.tessellation_factor = 0.75;
-        terrain_ubo.tessellated_edge_size = 20.0;
-        copy_buffer(&vk_context.device, &vk_context.terrain_uniform_buffer,  &terrain_ubo, sizeof(terrain_ubo));
         return true;
 }
+/*}}}*/
+
 /*bool vk_renderer_init(DeviceWindow win) {{{*/
 bool vk_renderer_init(DeviceWindow win) {
     vk_context.width = win.width;
     vk_context.height = win.height;
-    vulkan_library = sx_os_dlopen("libvulkan.so");
-    sx_assert_rel(vulkan_library != NULL);
+    /*vulkan_library = sx_os_dlopen("libvulkan.so");*/
+    /*sx_assert_rel(vulkan_library != NULL);*/
+    volkInitialize();
 
     bool imported = true;
 
-#define VK_IMPORT_FUNC( _func )                               \
-    _func = (PFN_##_func)sx_os_dlsym(vulkan_library, #_func);       \
-    imported &= NULL != _func;
-    VK_IMPORT
-#undef VK_IMPORT_FUNC
+/*#define VK_IMPORT_FUNC( _func )                               \*/
+    /*_func = (PFN_##_func)sx_os_dlsym(vulkan_library, #_func);       \*/
+    /*imported &= NULL != _func;*/
+    /*VK_IMPORT*/
+/*#undef VK_IMPORT_FUNC*/
 
         sx_assert_rel(imported);
 
@@ -310,15 +143,15 @@ bool vk_renderer_init(DeviceWindow win) {
         "VK_LAYER_KHRONOS_validation"
     };
 
-    uint32_t num_extensions = 3;
+    uint32_t num_extensions = 2;
     const char *extensions[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
-        VK_KHR_XCB_SURFACE_EXTENSION_NAME,
+        VK_KHR_XCB_SURFACE_EXTENSION_NAME
 #endif
-        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+        /*VK_EXT_DEBUG_UTILS_EXTENSION_NAME*/
     };
     const sx_alloc* alloc = sx_alloc_malloc();
 
@@ -395,28 +228,32 @@ bool vk_renderer_init(DeviceWindow win) {
 
         VkInstanceCreateInfo inst_create_info;
         inst_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        inst_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&dbg_create_info;
+        /*inst_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&dbg_create_info;*/
+        inst_create_info.pNext = NULL;
         inst_create_info.flags = 0;
         inst_create_info.pApplicationInfo = &app_info;
-        inst_create_info.enabledLayerCount = num_layers;
-        inst_create_info.ppEnabledLayerNames = validation_layers;
+        /*inst_create_info.enabledLayerCount = num_layers;*/
+        /*inst_create_info.ppEnabledLayerNames = validation_layers;*/
+        inst_create_info.enabledLayerCount = 0;
+        inst_create_info.ppEnabledLayerNames = NULL;
         inst_create_info.enabledExtensionCount = num_extensions;
         inst_create_info.ppEnabledExtensionNames = extensions;
 
         result = vkCreateInstance(&inst_create_info, NULL, &vk_context.vk_instance);
         sx_assert_rel(result == VK_SUCCESS && "Could not create instance");
+        volkLoadInstance(vk_context.vk_instance);
 
-#define VK_IMPORT_INSTANCE_FUNC( _func )                           \
-        _func = (PFN_##_func)vkGetInstanceProcAddr(vk_context.vk_instance, #_func);       \
-        imported &= NULL != _func;
-        VK_IMPORT_INSTANCE
-#undef VK_IMPORT_INSTANCE_FUNC
+/*#define VK_IMPORT_INSTANCE_FUNC( _func )                           \*/
+        /*_func = (PFN_##_func)vkGetInstanceProcAddr(vk_context.vk_instance, #_func);       \*/
+        /*imported &= NULL != _func;*/
+        /*VK_IMPORT_INSTANCE*/
+/*#undef VK_IMPORT_INSTANCE_FUNC*/
 
             sx_assert_rel(imported && "Could not import instance functions");
 
 
-        result = vkCreateDebugUtilsMessengerEXT(vk_context.vk_instance, &dbg_create_info, NULL, &vk_context.vk_debugmessenger);
-        sx_assert_rel(result == VK_SUCCESS && "Could not create Debug Utils Messenger");
+        /*result = vkCreateDebugUtilsMessengerEXT(vk_context.vk_instance, &dbg_create_info, NULL, &vk_context.vk_debugmessenger);*/
+        /*sx_assert_rel(result == VK_SUCCESS && "Could not create Debug Utils Messenger");*/
     }
     /* }}} */
 
@@ -563,18 +400,21 @@ bool vk_renderer_init(DeviceWindow win) {
         device_create_info.pQueueCreateInfos = &queue_create_info[0];
         device_create_info.enabledExtensionCount = 1;
         device_create_info.ppEnabledExtensionNames = device_extensions;
-        device_create_info.enabledLayerCount = 1;
-        device_create_info.ppEnabledLayerNames = validation_layers;
+        /*device_create_info.enabledLayerCount = 1;*/
+        /*device_create_info.ppEnabledLayerNames = validation_layers;*/
+        device_create_info.enabledLayerCount = 0;
+        device_create_info.ppEnabledLayerNames = NULL;
         device_create_info.pEnabledFeatures = &device_features;
 
         result = vkCreateDevice(vk_context.device.physical_device, &device_create_info, NULL, &vk_context.device.logical_device);
         sx_assert_rel(result == VK_SUCCESS && "Could not create logical_device");
+        volkLoadDevice(vk_context.device.logical_device);
 
-#define VK_IMPORT_DEVICE_FUNC( _func )                                       \
-        _func = (PFN_##_func)vkGetDeviceProcAddr(vk_context.device.logical_device, #_func);  \
-        imported &= NULL != _func;
-        VK_IMPORT_DEVICE
-#undef VK_IMPORT_DEVICE_FUNC
+/*#define VK_IMPORT_DEVICE_FUNC( _func )                                       \*/
+        /*_func = (PFN_##_func)vkGetDeviceProcAddr(vk_context.device.logical_device, #_func);  \*/
+        /*imported &= NULL != _func;*/
+        /*VK_IMPORT_DEVICE*/
+/*#undef VK_IMPORT_DEVICE_FUNC*/
             sx_assert_rel(imported && "Could not create device functions");
 
     }
@@ -604,42 +444,20 @@ bool vk_renderer_init(DeviceWindow win) {
 				&vk_context.graphic_queue_cmdpool);
         sx_assert_rel(result == VK_SUCCESS && "Could not create command pool!");
 
-		VkCommandBufferAllocateInfo cmd_buffer_allocate_info;
-		cmd_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		cmd_buffer_allocate_info.pNext = NULL;
-		cmd_buffer_allocate_info.commandPool = vk_context.graphic_queue_cmdpool;
-		cmd_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		cmd_buffer_allocate_info.commandBufferCount = RENDERING_RESOURCES_SIZE;
-
-		vk_context.graphic_queue_cmdbuffer = sx_malloc(alloc, RENDERING_RESOURCES_SIZE *
-				sizeof(*(vk_context.graphic_queue_cmdbuffer)));
-
-		result = vkAllocateCommandBuffers(vk_context.device.logical_device, &cmd_buffer_allocate_info,
-				vk_context.graphic_queue_cmdbuffer);
-        sx_assert_rel(result == VK_SUCCESS && "Could no create command buffer!");
-
-        cmd_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        cmd_buffer_allocate_info.pNext = NULL;
-        cmd_buffer_allocate_info.commandPool = vk_context.graphic_queue_cmdpool;
-        cmd_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cmd_buffer_allocate_info.commandBufferCount = 1;
-
-        result = vkAllocateCommandBuffers(vk_context.device.logical_device, &cmd_buffer_allocate_info,
-                &vk_context.copy_cmdbuffer);
-        sx_assert_rel(result == VK_SUCCESS && "Could no create copy command buffer!");
-	}
+        create_command_buffers();
+    }
     /*}}}*/
 
     /* Global Buffer Creation {{{*/ 
     {
-        result = create_buffer(&vk_context.device, &vk_context.global_uniform_buffer,
+        result = create_buffer(&vk_context.global_uniform_buffer,
                                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, sizeof(GlobalUBO));
         sx_assert_rel(result == VK_SUCCESS && "Could not create global uniform buffer!");
 
-        create_texture(&vk_context.device, &vk_context.lut_brdf, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/empty.ktx");
-        create_texture(&vk_context.device, &vk_context.irradiance_cube, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/empty.ktx");
-        create_texture(&vk_context.device, &vk_context.prefiltered_cube, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/empty.ktx");
+        create_texture(&vk_context.lut_brdf, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/empty.ktx");
+        create_texture(&vk_context.irradiance_cube, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/empty.ktx");
+        create_texture(&vk_context.prefiltered_cube, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/empty.ktx");
     }
     /*}}}*/
 
@@ -680,13 +498,12 @@ bool vk_renderer_init(DeviceWindow win) {
         };
         /*}}}*/
 
-        result = create_buffer(&vk_context.device, &vk_context.vertex_buffer_sky, 
+        result = create_buffer(&vk_context.vertex_buffer_sky, 
                                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sizeof(vertex_data));
 
         sx_assert_rel(result == VK_SUCCESS && "Could not create vertex buffer!");
-        result = copy_buffer_staged(&vk_context.device, vk_context.copy_cmdbuffer, vk_context.vk_graphic_queue, 
-                &vk_context.vertex_buffer_sky, vertex_data, sizeof(vertex_data));
+        result = copy_buffer_staged(&vk_context.vertex_buffer_sky, vertex_data, sizeof(vertex_data));
         sx_assert_rel(result == VK_SUCCESS && "Could not copy vertex buffer!");
 	}
 
@@ -710,92 +527,20 @@ bool vk_renderer_init(DeviceWindow win) {
         };
         /*}}}*/
 
-        result = create_buffer(&vk_context.device, &vk_context.index_buffer_sky, 
+        result = create_buffer(&vk_context.index_buffer_sky, 
                                 VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sizeof(index_data));
         sx_assert_rel(result == VK_SUCCESS && "Could not create index buffer!");
-        result = copy_buffer_staged(&vk_context.device, vk_context.copy_cmdbuffer, vk_context.vk_graphic_queue, 
-                &vk_context.index_buffer_sky, index_data, sizeof(index_data));
+        result = copy_buffer_staged(&vk_context.index_buffer_sky, index_data, sizeof(index_data));
         sx_assert_rel(result == VK_SUCCESS && "Could not copy index buffer!");
 	}
 
 	{
         /*create_cubemap(&vk_context.device, &vk_context.cubemap_texture);*/
-        create_texture(&vk_context.device, &vk_context.cubemap_texture, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/cubemap/sky.ktx");
+        create_texture(&vk_context.cubemap_texture, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/cubemap/sky.ktx");
     }
     /*}}}*/
     
-    /* Terrain creation {{{*/
-    {
-        typedef struct Vertex {
-            sx_vec3 pos;
-            sx_vec3 normal;
-            sx_vec2 uv;
-        } Vertex;
-
-        float mul = 1.0 * 64.0;
-
-        const uint32_t patch_size =  64;
-        const uint32_t uv_scale = 1.0;
-        const float wx = mul * 1.0;
-        const float wy = mul * 1.0;
-        const uint32_t w = patch_size - 1;
-        const uint32_t index_count = w * w * 4;
-        Vertex *vertex_data_terrain = sx_malloc(alloc, patch_size * patch_size * sizeof(*vertex_data_terrain));
-        uint32_t *index_data_terrain = sx_malloc(alloc, index_count * sizeof(*index_data_terrain));
-
-        for (uint32_t x = 0; x < patch_size; x++) {
-            for (uint32_t y = 0; y < patch_size; y++) {
-                uint32_t index = x + y * patch_size;
-                vertex_data_terrain[index].pos.x = x * wx + wx / 2.0 - (float)patch_size * wx / 2.0;
-                vertex_data_terrain[index].pos.y = 0.0;
-                vertex_data_terrain[index].pos.z = y * wy + wy / 2.0 - (float)patch_size * wy / 2.0;
-
-                vertex_data_terrain[index].normal.x = 0.0;
-                vertex_data_terrain[index].normal.y = 1.0;
-                vertex_data_terrain[index].normal.z = 0.0;
-
-                vertex_data_terrain[index].uv.x = (float)x / patch_size * uv_scale;
-                vertex_data_terrain[index].uv.y = 1.0 - (float)y / patch_size * uv_scale;
-            }
-        }
-
-        for (uint32_t x = 0; x < w; x++) {
-            for (uint32_t y = 0; y < w; y++) {
-                uint32_t index = (x + y * w) * 4;
-                index_data_terrain[index] = x + y * patch_size;
-				index_data_terrain[index + 1] = index_data_terrain[index] + 1;
-				index_data_terrain[index + 2] = index_data_terrain[index + 1] + patch_size;
-				index_data_terrain[index + 3] = index_data_terrain[index] + patch_size;
-            }
-        }
-
-        result = create_buffer(&vk_context.device, &vk_context.vertex_buffer_terrain, 
-                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, patch_size * patch_size * sizeof(Vertex));
-
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain vertex buffer!");
-        result = copy_buffer_staged(&vk_context.device, vk_context.copy_cmdbuffer, vk_context.vk_graphic_queue, 
-                &vk_context.vertex_buffer_terrain, vertex_data_terrain, patch_size * patch_size * sizeof(Vertex));
-        sx_assert_rel(result == VK_SUCCESS && "Could not copy terrain vertex buffer!");
-
-        result = create_buffer(&vk_context.device, &vk_context.index_buffer_terrain, 
-                                VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_count * sizeof(uint32_t));
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain index buffer!");
-        result = copy_buffer_staged(&vk_context.device, vk_context.copy_cmdbuffer, vk_context.vk_graphic_queue, 
-                &vk_context.index_buffer_terrain, index_data_terrain, index_count * sizeof(uint32_t));
-        sx_assert_rel(result == VK_SUCCESS && "Could not copy terrain index buffer!");
-
-        create_texture(&vk_context.device, &vk_context.terrain_heightmap, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/terrain/terrain_demolevel_heightmap2.ktx");
-        create_texture(&vk_context.device, &vk_context.terrain_normal, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/terrain/terrain_demolevel_normal2.ktx");
-        create_texture(&vk_context.device, &vk_context.terrain_layers, VK_SAMPLER_ADDRESS_MODE_REPEAT, alloc, "misc/terrain/terrain_demolevel_colormap2.ktx");
-        result = create_buffer(&vk_context.device, &vk_context.terrain_uniform_buffer,
-                                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, sizeof(TerrainUBO));
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain uniform buffer!");
-    }
-    /*}}}*/
 
     /* Render pass creation {{{ */
     {
@@ -1043,7 +788,7 @@ bool vk_renderer_init(DeviceWindow win) {
             descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             descriptor_pool_create_info.pNext = NULL;
             descriptor_pool_create_info.flags = 0;
-            descriptor_pool_create_info.maxSets = 1;
+            descriptor_pool_create_info.maxSets = 10;
             descriptor_pool_create_info.poolSizeCount = 2;
             descriptor_pool_create_info.pPoolSizes = pool_sizes;
             result = vkCreateDescriptorPool(vk_context.device.logical_device, &descriptor_pool_create_info, NULL,
@@ -1331,19 +1076,6 @@ bool vk_renderer_init(DeviceWindow win) {
                     &vk_context.global_descriptor_set);
             sx_assert_rel("Could not create global descriptor set!");
         }
-        // Terrain descriptor set
-        {
-            VkDescriptorSetAllocateInfo descriptor_set_allocate_info;
-            descriptor_set_allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            descriptor_set_allocate_info.pNext = NULL;
-            descriptor_set_allocate_info.descriptorPool = vk_context.terrain_descriptor_pool;
-            descriptor_set_allocate_info.descriptorSetCount = 1;
-            descriptor_set_allocate_info.pSetLayouts = &vk_context.terrain_descriptor_layout;
-
-            result = vkAllocateDescriptorSets(vk_context.device.logical_device, &descriptor_set_allocate_info,
-                    &vk_context.terrain_descriptor_set);
-            sx_assert_rel("Could not create terrain descriptor set!");
-        }
         // Skybox descriptor set
         {
             VkDescriptorSetAllocateInfo descriptor_set_allocate_info;
@@ -1474,68 +1206,6 @@ bool vk_renderer_init(DeviceWindow win) {
             descriptor_writes[0].pBufferInfo = NULL;
 
             vkUpdateDescriptorSets(vk_context.device.logical_device, 1, descriptor_writes, 0, NULL);
-        }
-        /*}}}*/
-        /* Terrain Descriptor update {{{*/
-        {
-            VkDescriptorBufferInfo buffer_info;
-            buffer_info.buffer = vk_context.terrain_uniform_buffer.buffer;
-            buffer_info.offset = 0;
-            buffer_info.range = vk_context.terrain_uniform_buffer.size;
-
-            VkDescriptorImageInfo image_info[3];
-            image_info[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            image_info[0].imageView = vk_context.terrain_heightmap.image_buffer.image_view;
-            image_info[0].sampler = vk_context.terrain_heightmap.sampler;
-            image_info[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            image_info[1].imageView = vk_context.terrain_layers.image_buffer.image_view;
-            image_info[1].sampler = vk_context.terrain_layers.sampler;
-            image_info[2].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            image_info[2].imageView = vk_context.terrain_normal.image_buffer.image_view;
-            image_info[2].sampler = vk_context.terrain_normal.sampler;
-
-            VkWriteDescriptorSet descriptor_writes[4];
-            descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptor_writes[0].pNext = NULL;
-            descriptor_writes[0].dstSet = vk_context.terrain_descriptor_set;
-            descriptor_writes[0].dstBinding = 0;
-            descriptor_writes[0].dstArrayElement = 0;
-            descriptor_writes[0].descriptorCount = 1;
-            descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            descriptor_writes[0].pImageInfo = NULL;
-            descriptor_writes[0].pBufferInfo = &buffer_info;
-
-            descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptor_writes[1].pNext = NULL;
-            descriptor_writes[1].dstSet = vk_context.terrain_descriptor_set;
-            descriptor_writes[1].dstBinding = 1;
-            descriptor_writes[1].dstArrayElement = 0;
-            descriptor_writes[1].descriptorCount = 1;
-            descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptor_writes[1].pImageInfo = &image_info[0];
-            descriptor_writes[1].pBufferInfo = NULL;
-
-            descriptor_writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptor_writes[2].pNext = NULL;
-            descriptor_writes[2].dstSet = vk_context.terrain_descriptor_set;
-            descriptor_writes[2].dstBinding = 2;
-            descriptor_writes[2].dstArrayElement = 0;
-            descriptor_writes[2].descriptorCount = 1;
-            descriptor_writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptor_writes[2].pImageInfo = &image_info[1];
-            descriptor_writes[2].pBufferInfo = NULL;
-
-            descriptor_writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptor_writes[3].pNext = NULL;
-            descriptor_writes[3].dstSet = vk_context.terrain_descriptor_set;
-            descriptor_writes[3].dstBinding = 3;
-            descriptor_writes[3].dstArrayElement = 0;
-            descriptor_writes[3].descriptorCount = 1;
-            descriptor_writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptor_writes[3].pImageInfo = &image_info[2];
-            descriptor_writes[3].pBufferInfo = NULL;
-
-            vkUpdateDescriptorSets(vk_context.device.logical_device, 4, descriptor_writes, 0, NULL);
         }
         /*}}}*/
         update_composition_descriptors(&vk_context);
@@ -2389,21 +2059,21 @@ VkResult build_commandbuffers(RendererContext* context, Renderer* rd) {
         {
 
             // draw terrain
-            vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS, context->terrain_pipeline_layout,
-                    1, 1, &context->terrain_descriptor_set, 0, NULL);
             vkCmdBindPipeline(context->graphic_queue_cmdbuffer[i],
                     VK_PIPELINE_BIND_POINT_GRAPHICS, context->terrain_pipeline);
-            vkCmdBindVertexBuffers(context->graphic_queue_cmdbuffer[i], 0, 1,
-                    &context->vertex_buffer_terrain.buffer, &offset);
-            vkCmdBindIndexBuffer(context->graphic_queue_cmdbuffer[i], context->index_buffer_terrain.buffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdDrawIndexed(context->graphic_queue_cmdbuffer[i], context->index_buffer_terrain.size/(sizeof(uint32_t)), 1, 0, 0, 0);
+            for (uint32_t idx = 0; idx < rd->terrain_system->data.size; idx++) {
+                vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS, context->terrain_pipeline_layout,
+                        1, 1, &rd->terrain_system->data.descriptor_set[idx], 0, NULL);
+                vkCmdBindVertexBuffers(context->graphic_queue_cmdbuffer[i], 0, 1,
+                        &rd->terrain_system->data.vertex_buffer[idx].buffer, &offset);
+                vkCmdBindIndexBuffer(context->graphic_queue_cmdbuffer[i], rd->terrain_system->data.index_buffer[idx].buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(context->graphic_queue_cmdbuffer[i], rd->terrain_system->data.index_buffer[idx].size/(sizeof(uint32_t)), 1, 0, 0, 0);
+            }
 
             //draw objects
             vkCmdBindPipeline(context->graphic_queue_cmdbuffer[i],
                     VK_PIPELINE_BIND_POINT_GRAPHICS, context->objects_pipeline);
-            printf("size: %d\n", rd->data.size);
             for (uint32_t obj = 0; obj < rd->data.size; obj++) {
-                printf("aki\n");
                 vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS, context->objects_pipeline_layout,
                         1, 1, &rd->data.descriptor_set[obj], 0, NULL);
                 vkCmdBindVertexBuffers(context->graphic_queue_cmdbuffer[i], 0, 1,
@@ -2468,8 +2138,8 @@ VkResult build_commandbuffers(RendererContext* context, Renderer* rd) {
 }
 /*}}}*/
 
-/* vk_renderer_draw(RendererContext* context, float dt) {{{*/
-bool vk_renderer_draw(RendererContext* context, float dt) {
+/* vk_renderer_draw(RendererContext* context, Renderer* rd, float dt) {{{*/
+bool vk_renderer_draw(RendererContext* context, Renderer* rd, float dt) {
     /*fly_camera_update(context->camera, dt);*/
 	static uint32_t resource_index = 0;
 	uint32_t next_resource_index = (resource_index + 1) % RENDERING_RESOURCES_SIZE;
@@ -2484,9 +2154,12 @@ bool vk_renderer_draw(RendererContext* context, float dt) {
 			UINT64_MAX, context->image_available_semaphore[resource_index], VK_NULL_HANDLE, &image_index);
 	switch(result) {
 		case VK_SUCCESS:
+			break;
 		case VK_SUBOPTIMAL_KHR:
 		case VK_ERROR_OUT_OF_DATE_KHR:
+            printf("acquire subotimo\n");
 			break;
+            /*renderer_resize(rd, vk_context.width, vk_context.height);*/
 		default:
 			printf("Problem occurred during swap chain image acquisition!\n");
 			return false;
@@ -2521,16 +2194,19 @@ bool vk_renderer_draw(RendererContext* context, float dt) {
 	result = vkQueuePresentKHR(context->vk_present_queue, &present_info);
 	switch(result) {
 		case VK_SUCCESS:
-		case VK_SUBOPTIMAL_KHR:
 			break;
+		case VK_SUBOPTIMAL_KHR:
 		case VK_ERROR_OUT_OF_DATE_KHR:
+            printf("present subotimo\n");
+            break;
+            /*renderer_resize(rd, vk_context.width, vk_context.height);*/
 		default:
 			printf("Problem occurred during image presentation!\n");
 			return false;
 	}
 	resource_index = next_resource_index;
 
-    vkDeviceWaitIdle(context->device.logical_device);
+    /*vkDeviceWaitIdle(context->device.logical_device);*/
 	return true;
 }
 /*}}}*/
@@ -2581,6 +2257,7 @@ VkResult create_swapchain( uint32_t width, uint32_t height) {
             break;
         }
     }
+    sx_free(alloc, surface_formats);
 
     /* Clamp width and height */
     VkExtent2D swap_chain_extent = { width, height };
@@ -2621,6 +2298,7 @@ VkResult create_swapchain( uint32_t width, uint32_t height) {
         if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
             present_mode = present_modes[i];
     }
+    present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
     sx_free(alloc, present_modes);
 
     VkSwapchainCreateInfoKHR swap_chain_create_info;
@@ -2710,6 +2388,9 @@ VkResult create_image(Device* device, ImageBuffer* image_buffer,
     if (image_buffer->image != VK_NULL_HANDLE) {
         clear_image(device, image_buffer);
     }
+    image_buffer->image = VK_NULL_HANDLE;
+    image_buffer->image_view = VK_NULL_HANDLE;
+    image_buffer->memory = VK_NULL_HANDLE;
 
     VkResult result;
     VkExtent3D extent;
@@ -2803,13 +2484,28 @@ VkResult create_image(Device* device, ImageBuffer* image_buffer,
 /* clear_image(Device* device, ImageBuffer* image) {{{*/
 void clear_image(Device* device, ImageBuffer* image) {
     vkDestroyImageView(device->logical_device, image->image_view, NULL);
-    vkDestroyImage(device->logical_device, image->image, NULL);
     vkFreeMemory(device->logical_device, image->memory, NULL);
+    vkDestroyImage(device->logical_device, image->image, NULL);
 }
 /*}}}*/
 
+void clear_buffer(Device* device, Buffer* buffer) {
+    vkFreeMemory(device->logical_device, buffer->memory, NULL);
+    vkDestroyBuffer(device->logical_device, buffer->buffer, NULL);
+}
+
+void clear_texture(Device* device, Texture* texture) {
+    vkDestroySampler(device->logical_device, texture->sampler, NULL);
+    clear_image(device, &texture->image_buffer);
+}
+
 /* create_texture(Device* device, Texture* texture, const sx_alloc* alloc, const char* filepath) {{{*/
-VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, const char* filepath) {
+VkResult create_texture(Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, const char* filepath) {
+    texture->sampler = VK_NULL_HANDLE;
+    texture->image_buffer.image = VK_NULL_HANDLE;
+    texture->image_buffer.image_view = VK_NULL_HANDLE;
+    texture->image_buffer.memory = VK_NULL_HANDLE;
+
     VkResult result;
     sx_mem_block* mem = sx_file_load_bin(alloc, filepath);
     ddsktx_texture_info tc = {0};
@@ -2819,12 +2515,12 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
     sx_assert(parse == true && "Could not parse ktx file");
     if(parse) {
         Buffer staging;
-        result = create_buffer(device, &staging, VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        result = create_buffer(&staging, VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, tc.size_bytes);
         sx_assert_rel(result == VK_SUCCESS && "Could not create staging buffer!");
 
 		void *staging_buffer_memory_pointer;
-		VkResult result = vkMapMemory(device->logical_device, staging.memory, 0,
+		VkResult result = vkMapMemory(vk_context.device.logical_device, staging.memory, 0,
 				tc.size_bytes, 0, &staging_buffer_memory_pointer);
         sx_assert_rel(result == VK_SUCCESS && "Could not map memory and upload data to staging buffer!");
         uint32_t offset = 0;
@@ -2885,12 +2581,12 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
 		image_create_info.pQueueFamilyIndices = NULL;
 		image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-		result = vkCreateImage(device->logical_device, &image_create_info, NULL,
+		result = vkCreateImage(vk_context.device.logical_device, &image_create_info, NULL,
 				&texture->image_buffer.image);
         sx_assert_rel(result == VK_SUCCESS && "Could not create texture image!");
 
 		VkMemoryRequirements image_memory_requirements;
-		vkGetImageMemoryRequirements(device->logical_device, texture->image_buffer.image, &image_memory_requirements);
+		vkGetImageMemoryRequirements(vk_context.device.logical_device, texture->image_buffer.image, &image_memory_requirements);
 
         VkMemoryAllocateInfo memory_allocate_info;
         memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -2902,7 +2598,7 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
 
         sx_assert_rel(result == VK_SUCCESS && "Could not allocate memory for texture!");
 
-		result = vkBindImageMemory(device->logical_device, texture->image_buffer.image, texture->image_buffer.memory, 0);
+		result = vkBindImageMemory(vk_context.device.logical_device, texture->image_buffer.image, texture->image_buffer.memory, 0);
         sx_assert_rel(result == VK_SUCCESS && "Could not bind memory image!");
 
 		VkImageSubresourceRange image_subresource_range;
@@ -2955,6 +2651,7 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
                     VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1,
                     &image_memory_barrier);
         }
+        sx_free(alloc, buffer_copy_regions);
 
 		vkEndCommandBuffer(cmdbuffer);
 
@@ -2974,7 +2671,7 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
         fence_create_info.flags = 0;
         fence_create_info.pNext = NULL;
         VkFence fence;
-        vkCreateFence(device->logical_device, &fence_create_info, NULL, &fence);
+        vkCreateFence(vk_context.device.logical_device, &fence_create_info, NULL, &fence);
 
         result = vkQueueSubmit(vk_context.vk_graphic_queue, 1, &submit_info, fence);
         sx_assert_rel(result == VK_SUCCESS && "Could not submit command buffer!");
@@ -2998,7 +2695,7 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
         samplerCreateInfo.minLod = 0.0f;
         samplerCreateInfo.maxLod = (float)tc.num_mips;
         samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-        result = vkCreateSampler(device->logical_device, &samplerCreateInfo, NULL, &texture->sampler);
+        result = vkCreateSampler(vk_context.device.logical_device, &samplerCreateInfo, NULL, &texture->sampler);
         sx_assert_rel(result == VK_SUCCESS && "Could not create texture sampler!");
 
         // Create image view
@@ -3018,21 +2715,23 @@ VkResult create_texture(Device* device, Texture* texture, VkSamplerAddressMode s
         viewCreateInfo.subresourceRange = image_subresource_range;
         viewCreateInfo.subresourceRange.layerCount = layer_face;
         viewCreateInfo.image = texture->image_buffer.image;
-        result = vkCreateImageView(device->logical_device, &viewCreateInfo, NULL, &texture->image_buffer.image_view);
+        result = vkCreateImageView(vk_context.device.logical_device, &viewCreateInfo, NULL, &texture->image_buffer.image_view);
         sx_assert_rel(result == VK_SUCCESS && "Could not create texture image view!");
 
         // Clean up staging resources
-        vkFreeMemory(device->logical_device, staging.memory, NULL);
-        vkDestroyBuffer(device->logical_device, staging.buffer, NULL);
+        vkFreeMemory(vk_context.device.logical_device, staging.memory, NULL);
+        vkDestroyBuffer(vk_context.device.logical_device, staging.buffer, NULL);
 
 
     }
+    sx_mem_destroy_block(mem);
 
     return result;
 }
 /*}}}*/
 
 /* create_cubemap(Device* device, Texture* cubemap){{{*/
+/*
 VkResult create_cubemap(Device* device, Texture* cubemap) {
     VkResult result;
     int total_size = 0;
@@ -3049,7 +2748,7 @@ VkResult create_cubemap(Device* device, Texture* cubemap) {
     Buffer staging;
     //creating staging buffer
     {
-        result = create_buffer(&vk_context.device, &staging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        result = create_buffer(&staging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, total_size);
         sx_assert_rel(result == VK_SUCCESS && "Could not create staging buffer!");
 
@@ -3252,6 +2951,7 @@ VkResult create_cubemap(Device* device, Texture* cubemap) {
     }
     return result;
 }
+*/
 /*}}}*/
 
 
@@ -3317,9 +3017,51 @@ VkResult create_attachments(RendererContext* context) {
 }
 /*}}}*/
 
+/* VkResult create_command_buffers() {{{*/
+VkResult create_command_buffers() {
+    VkCommandBufferAllocateInfo cmd_buffer_allocate_info;
+    cmd_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmd_buffer_allocate_info.pNext = NULL;
+    cmd_buffer_allocate_info.commandPool = vk_context.graphic_queue_cmdpool;
+    cmd_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmd_buffer_allocate_info.commandBufferCount = RENDERING_RESOURCES_SIZE;
+
+    vk_context.graphic_queue_cmdbuffer = sx_malloc(sx_alloc_malloc(), RENDERING_RESOURCES_SIZE *
+            sizeof(*(vk_context.graphic_queue_cmdbuffer)));
+
+    VkResult result;
+    result = vkAllocateCommandBuffers(vk_context.device.logical_device, &cmd_buffer_allocate_info,
+            vk_context.graphic_queue_cmdbuffer);
+    sx_assert_rel(result == VK_SUCCESS && "Could no create command buffer!");
+
+    cmd_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmd_buffer_allocate_info.pNext = NULL;
+    cmd_buffer_allocate_info.commandPool = vk_context.graphic_queue_cmdpool;
+    cmd_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmd_buffer_allocate_info.commandBufferCount = 1;
+
+    result = vkAllocateCommandBuffers(vk_context.device.logical_device, &cmd_buffer_allocate_info,
+            &vk_context.copy_cmdbuffer);
+    sx_assert_rel(result == VK_SUCCESS && "Could no create copy command buffer!");
+    return result;
+}
+/*}}}*/
+
+/* void destroy_command_buffers() {{{*/
+void destroy_command_buffers() {
+    vkFreeCommandBuffers(vk_context.device.logical_device, vk_context.graphic_queue_cmdpool, 
+            RENDERING_RESOURCES_SIZE, vk_context.graphic_queue_cmdbuffer);
+    sx_free(sx_alloc_malloc(), vk_context.graphic_queue_cmdbuffer);
+    vkFreeCommandBuffers(vk_context.device.logical_device, vk_context.graphic_queue_cmdpool, 
+            1, &vk_context.copy_cmdbuffer);
+}
+/*}}}*/
+
 /* create_buffer(Device* device, Buffer* buffer, VkBufferUsageFlags usage...) {{{*/
-VkResult create_buffer(Device* device, Buffer* buffer, VkBufferUsageFlags usage, 
+VkResult create_buffer(Buffer* buffer, VkBufferUsageFlags usage, 
                        VkMemoryPropertyFlags memory_properties_flags, VkDeviceSize size) {
+        buffer->buffer = VK_NULL_HANDLE;
+        buffer->memory = VK_NULL_HANDLE;
 		buffer->size = size;
 		VkBufferCreateInfo buffer_create_info;
 		buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -3331,12 +3073,12 @@ VkResult create_buffer(Device* device, Buffer* buffer, VkBufferUsageFlags usage,
 		buffer_create_info.queueFamilyIndexCount = 0;
 		buffer_create_info.pQueueFamilyIndices = NULL;
 
-		VkResult result = vkCreateBuffer(device->logical_device, &buffer_create_info, NULL,
+		VkResult result = vkCreateBuffer(vk_context.device.logical_device, &buffer_create_info, NULL,
 				&buffer->buffer);
         sx_assert_rel(result == VK_SUCCESS && "Could not create buffer");
 
 		VkMemoryRequirements buffer_memory_requirements;
-		vkGetBufferMemoryRequirements(device->logical_device, buffer->buffer,
+		vkGetBufferMemoryRequirements(vk_context.device.logical_device, buffer->buffer,
 				&buffer_memory_requirements);
         VkMemoryAllocateInfo memory_allocate_info;
         memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -3346,7 +3088,7 @@ VkResult create_buffer(Device* device, Buffer* buffer, VkBufferUsageFlags usage,
         result = vkAllocateMemory(vk_context.device.logical_device, &memory_allocate_info, NULL,
                 &buffer->memory);
 
-		result = vkBindBufferMemory(device->logical_device, buffer->buffer,
+		result = vkBindBufferMemory(vk_context.device.logical_device, buffer->buffer,
 				buffer->memory, 0);
         sx_assert_rel(result == VK_SUCCESS && "Could not bind memory for buffer");
         return result;
@@ -3354,35 +3096,34 @@ VkResult create_buffer(Device* device, Buffer* buffer, VkBufferUsageFlags usage,
 /*}}}*/
 
 /*VkResult copy_buffer(Device* device, Buffer* dst_buffer, void* data, VkDeviceSize size) {{{*/
-VkResult copy_buffer(Device* device, Buffer* dst_buffer, void* data, VkDeviceSize size) {
+VkResult copy_buffer(Buffer* dst_buffer, void* data, VkDeviceSize size) {
     void *buffer_memory_pointer;
     VkResult result;
-    result = vkMapMemory(device->logical_device, dst_buffer->memory, 0, size, 0, &buffer_memory_pointer);
+    result = vkMapMemory(vk_context.device.logical_device, dst_buffer->memory, 0, size, 0, &buffer_memory_pointer);
     sx_assert_rel(result == VK_SUCCESS && "Could not map memory and upload data to buffer!");
     sx_memcpy(buffer_memory_pointer, data, size);
     
-    vkUnmapMemory(device->logical_device, dst_buffer->memory);
+    vkUnmapMemory(vk_context.device.logical_device, dst_buffer->memory);
 
     return result;
 }
 /*}}}*/
 
-/* copy_buffer_staged(Device* device, VkCommandBuffer copy_cmdbuffer, VkQueue copy_queue...) {{{*/
-VkResult copy_buffer_staged(Device* device, VkCommandBuffer copy_cmdbuffer, VkQueue copy_queue,
-                            Buffer* dst_buffer, void* data, VkDeviceSize size) {
+/* VkResult copy_buffer_staged(Buffer* dst_buffer, void* data, VkDeviceSize size) {{{*/
+VkResult copy_buffer_staged(Buffer* dst_buffer, void* data, VkDeviceSize size) {
     Buffer staging;
-    VkResult result = create_buffer(device, &staging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    VkResult result = create_buffer(&staging, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, size);
     sx_assert_rel(result == VK_SUCCESS && "Could not create staging buffer!");
 
     void *staging_buffer_memory_pointer;
-    result = vkMapMemory(device->logical_device, staging.memory, 0,
+    result = vkMapMemory(vk_context.device.logical_device, staging.memory, 0,
             staging.size, 0, &staging_buffer_memory_pointer);
     sx_assert_rel(result == VK_SUCCESS && "Could not map memory and upload data to buffer!");
     sx_memcpy(staging_buffer_memory_pointer, data, size);
     
-    vkUnmapMemory(device->logical_device, staging.memory);
-    VkCommandBuffer cmdbuffer = copy_cmdbuffer;;
+    vkUnmapMemory(vk_context.device.logical_device, staging.memory);
+    VkCommandBuffer cmdbuffer = vk_context.copy_cmdbuffer;
 
     VkCommandBufferBeginInfo command_buffer_begin_info;
     command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -3416,17 +3157,17 @@ VkResult copy_buffer_staged(Device* device, VkCommandBuffer copy_cmdbuffer, VkQu
     fence_create_info.flags = 0;
     fence_create_info.pNext = NULL;
     VkFence fence;
-    vkCreateFence(device->logical_device, &fence_create_info, NULL, &fence);
+    vkCreateFence(vk_context.device.logical_device, &fence_create_info, NULL, &fence);
 
-    result = vkQueueSubmit(copy_queue, 1, &submit_info, fence);
+    result = vkQueueSubmit(vk_context.vk_graphic_queue, 1, &submit_info, fence);
     sx_assert_rel(result == VK_SUCCESS && "Could not submit command buffer!");
     result = vkWaitForFences(vk_context.device.logical_device, 1, &fence, VK_TRUE, 1000000000);
     sx_assert_rel(result == VK_SUCCESS && "Could not submit command buffer!");
     vkDestroyFence(vk_context.device.logical_device, fence, NULL);
 
     // Clean up staging resources
-    vkFreeMemory(device->logical_device, staging.memory, NULL);
-    vkDestroyBuffer(device->logical_device, staging.buffer, NULL);
+    vkFreeMemory(vk_context.device.logical_device, staging.memory, NULL);
+    vkDestroyBuffer(vk_context.device.logical_device, staging.buffer, NULL);
     return result;
 }
 /*}}}*/
@@ -3440,39 +3181,49 @@ VkPipelineShaderStageCreateInfo load_shader(VkDevice logical_device, const char*
     shaderstage_create_info.stage = stage;
     shaderstage_create_info.pName = "main";
     shaderstage_create_info.pSpecializationInfo = NULL;
-    FILE* shader = fopen(filnename, "rb");
-    fseek(shader, 0, SEEK_END);
-    uint64_t size = ftell(shader);
-    uint8_t* data = (uint8_t*)aligned_alloc(sizeof(uint32_t), size * sizeof(uint8_t));
-    rewind(shader);
-    fread(data, sizeof(uint8_t), size, shader);
+    sx_mem_block* mem = sx_file_load_bin(sx_alloc_malloc(), filnename);
+    /*FILE* shader = fopen(filnename, "rb");*/
+    /*fseek(shader, 0, SEEK_END);*/
+    /*uint64_t size = ftell(shader);*/
+    /*uint8_t* data = (uint8_t*)aligned_alloc(sizeof(uint32_t), size * sizeof(uint8_t));*/
+    /*rewind(shader);*/
+    /*fread(data, sizeof(uint8_t), size, shader);*/
     VkShaderModuleCreateInfo module_create_info;
     module_create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     module_create_info.pNext = NULL;
     module_create_info.flags = 0;
-    module_create_info.codeSize = size;
-    module_create_info.pCode = (uint32_t*)data;
+    module_create_info.codeSize = mem->size;
+    module_create_info.pCode = (uint32_t*)mem->data;
     VkResult result = vkCreateShaderModule(logical_device, &module_create_info, NULL,
             &shaderstage_create_info.module);
     if(result != VK_SUCCESS) {
         printf("Could not create vert shader module!\n");
     }
-    free(data);
+    sx_mem_destroy_block(mem);
+    /*free(data);*/
     return shaderstage_create_info;
 }
 /*}}}*/
 
+/*Renderer* create_renderer(const sx_alloc* alloc, EntityManager* em) {{{*/
 Renderer* create_renderer(const sx_alloc* alloc, EntityManager* em) {
     Renderer* renderer = sx_malloc(alloc, sizeof(*renderer));
     renderer->alloc = alloc;
     renderer->entity_manager = em;
     renderer->table = sx_hashtbl_create(alloc, 1000);
+    renderer->data.buffer = NULL;
     renderer->data.size = 0;
     renderer->data.capacity = 0;
+    renderer->materials.buffer = NULL;
+    renderer->materials.size = 0;
+    renderer->materials.capacity = 0;
+    renderer->context = &vk_context;
 
     return renderer;
 }
+/*}}}*/
 
+/*void pbrmaterial_allocate(Renderer* rd, uint32_t size) {{{*/
 void pbrmaterial_allocate(Renderer* rd, uint32_t size) {
     sx_assert_rel(size > rd->materials.size);
 
@@ -3485,7 +3236,7 @@ void pbrmaterial_allocate(Renderer* rd, uint32_t size) {
                              + sizeof(Buffer) + alignof(Buffer) );
 
     new_data.buffer = sx_malloc(rd->alloc, bytes);
-    new_data.size = rd->materials.size;
+    new_data.size = size;
     new_data.capacity = size;
 
     new_data.base_color_texture = (Texture*)sx_align_ptr((void*)(new_data.buffer), 0, alignof(Texture));
@@ -3495,17 +3246,22 @@ void pbrmaterial_allocate(Renderer* rd, uint32_t size) {
     new_data.emissive_texture = (Texture*)sx_align_ptr((void*)(new_data.occlusion_texture + size), 0, alignof(Texture));
     new_data.object_ubos = (Buffer*)sx_align_ptr((void*)(new_data.emissive_texture + size), 0, alignof(Buffer));
 
-    sx_memcpy(new_data.base_color_texture, rd->materials.base_color_texture, rd->data.size * sizeof(Texture));
-    sx_memcpy(new_data.metallic_roughness_texture, rd->materials.metallic_roughness_texture, rd->data.size * sizeof(Texture));
-    sx_memcpy(new_data.normal_texture, rd->materials.normal_texture, rd->data.size * sizeof(Texture));
-    sx_memcpy(new_data.occlusion_texture, rd->materials.occlusion_texture, rd->data.size * sizeof(Texture));
-    sx_memcpy(new_data.emissive_texture, rd->materials.emissive_texture, rd->data.size * sizeof(Texture));
-    sx_memcpy(new_data.object_ubos, rd->materials.object_ubos, rd->data.size * sizeof(Buffer));
+    if (rd->materials.buffer) {
+        sx_memcpy(new_data.base_color_texture, rd->materials.base_color_texture, rd->data.size * sizeof(Texture));
+        sx_memcpy(new_data.metallic_roughness_texture, rd->materials.metallic_roughness_texture, rd->data.size * sizeof(Texture));
+        sx_memcpy(new_data.normal_texture, rd->materials.normal_texture, rd->data.size * sizeof(Texture));
+        sx_memcpy(new_data.occlusion_texture, rd->materials.occlusion_texture, rd->data.size * sizeof(Texture));
+        sx_memcpy(new_data.emissive_texture, rd->materials.emissive_texture, rd->data.size * sizeof(Texture));
+        sx_memcpy(new_data.object_ubos, rd->materials.object_ubos, rd->data.size * sizeof(Buffer));
 
-    sx_free(rd->alloc, rd->materials.buffer);
+        sx_free(rd->alloc, rd->materials.buffer);
+    }
+
     rd->materials = new_data;
 }
+/*}}}*/
 
+/*void init_pbr_materials(Renderer* rd, MaterialsData* material_data, const char* path) {{{*/
 void init_pbr_materials(Renderer* rd, MaterialsData* material_data, const char* path) {
     pbrmaterial_allocate(rd, material_data->num_materials);
     char total_path[200];
@@ -3513,27 +3269,27 @@ void init_pbr_materials(Renderer* rd, MaterialsData* material_data, const char* 
     for (int i = 0; i < material_data->num_materials; i++) {
         sx_strcpy(total_path, 200, path);
         sx_strcat(total_path, 200, material_data->base_color_texture_names[i].names);
-        create_texture(&vk_context.device, &rd->materials.base_color_texture[i], 
+        create_texture(&rd->materials.base_color_texture[i], 
                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, rd->alloc, total_path);
 
         sx_strcpy(total_path, 200, path);
         sx_strcat(total_path, 200, material_data->metallic_roughness_texture_names[i].names);
-        create_texture(&vk_context.device, &rd->materials.metallic_roughness_texture[i], 
+        create_texture(&rd->materials.metallic_roughness_texture[i], 
                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, rd->alloc, total_path);
 
         sx_strcpy(total_path, 200, path);
         sx_strcat(total_path, 200, material_data->normal_texture_names[i].names);
-        create_texture(&vk_context.device, &rd->materials.normal_texture[i], 
+        create_texture(&rd->materials.normal_texture[i], 
                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, rd->alloc, total_path);
 
         sx_strcpy(total_path, 200, path);
         sx_strcat(total_path, 200, material_data->occlusion_texture_names[i].names);
-        create_texture(&vk_context.device, &rd->materials.occlusion_texture[i], 
+        create_texture(&rd->materials.occlusion_texture[i], 
                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, rd->alloc, total_path);
 
         sx_strcpy(total_path, 200, path);
         sx_strcat(total_path, 200, material_data->emissive_texture_names[i].names);
-        create_texture(&vk_context.device, &rd->materials.emissive_texture[i], 
+        create_texture(&rd->materials.emissive_texture[i], 
                 VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, rd->alloc, total_path);
         ObjectsUBO ubo;
         ubo.base_color = material_data->base_color_factors[i];
@@ -3541,14 +3297,16 @@ void init_pbr_materials(Renderer* rd, MaterialsData* material_data, const char* 
         ubo.metallic_roughness.y = material_data->roughness_factors[i];
 
         VkResult result;
-        result = create_buffer(&vk_context.device, &rd->materials.object_ubos[i],
+        result = create_buffer(&rd->materials.object_ubos[i],
                                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, sizeof(ObjectsUBO));
         sx_assert_rel(result == VK_SUCCESS && "Could not create object uniform buffer!");
-        copy_buffer(&vk_context.device, &rd->materials.object_ubos[i],  &ubo, sizeof(ubo));
+        copy_buffer(&rd->materials.object_ubos[i],  &ubo, sizeof(ubo));
     }
 }
+/*}}}*/
 
+/*void renderer_allocate(Renderer* rd, uint32_t size) {{{*/
 void renderer_allocate(Renderer* rd, uint32_t size) {
     sx_assert_rel(size > rd->data.size);
 
@@ -3568,20 +3326,24 @@ void renderer_allocate(Renderer* rd, uint32_t size) {
     /*new_data.vertex_offsets = (uint32_t*)sx_align_ptr((void*)(new_data.index_buffer + size), 0, alignof(uint32_t));*/
     /*new_data.index_offsets = (uint32_t*)sx_align_ptr((void*)(new_data.vertex_offsets + size), 0, alignof(uint32_t));*/
 
-    sx_memcpy(new_data.entity, rd->data.entity, rd->data.size * sizeof(Entity));
-    sx_memcpy(new_data.vertex_buffer, rd->data.vertex_buffer, rd->data.size * sizeof(Buffer));
-    sx_memcpy(new_data.index_buffer, rd->data.index_buffer, rd->data.size * sizeof(Buffer));
-    sx_memcpy(new_data.descriptor_set, rd->data.descriptor_set, rd->data.size * sizeof(VkDescriptorSet));
-    /*sx_memcpy(new_data.index_offsets, rd->data.index_offsets, rd->data.size * sizeof(uint32_t));*/
+    if (rd->data.buffer) {
+        sx_memcpy(new_data.entity, rd->data.entity, rd->data.size * sizeof(Entity));
+        sx_memcpy(new_data.vertex_buffer, rd->data.vertex_buffer, rd->data.size * sizeof(Buffer));
+        sx_memcpy(new_data.index_buffer, rd->data.index_buffer, rd->data.size * sizeof(Buffer));
+        sx_memcpy(new_data.descriptor_set, rd->data.descriptor_set, rd->data.size * sizeof(VkDescriptorSet));
+        /*sx_memcpy(new_data.index_offsets, rd->data.index_offsets, rd->data.size * sizeof(uint32_t));*/
 
-    sx_free(rd->alloc, rd->data.buffer);
+        sx_free(rd->alloc, rd->data.buffer);
+    }
     rd->data = new_data;
 }
+/*}}}*/
 
 void renderer_grow(Renderer* rd) {
     renderer_allocate(rd, rd->data.capacity * 2 + 1);
 }
 
+/*MeshInstance create_mesh_instance(Renderer* rd, Entity e, MeshData* mesh_data) {{{*/
 MeshInstance create_mesh_instance(Renderer* rd, Entity e, MeshData* mesh_data) {
     if (rd->data.capacity == rd->data.size) {
         renderer_grow(rd);
@@ -3593,22 +3355,20 @@ MeshInstance create_mesh_instance(Renderer* rd, Entity e, MeshData* mesh_data) {
     rd->data.entity[last] = e;
     VkResult result;
     // Vertex buffer creation;
-    result = create_buffer(&vk_context.device, &rd->data.vertex_buffer[last],
+    result = create_buffer(&rd->data.vertex_buffer[last],
                             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mesh_data->vertex_size * sizeof(float));
 
     sx_assert_rel(result == VK_SUCCESS && "Could not create vertex buffer!");
-    result = copy_buffer_staged(&vk_context.device, vk_context.copy_cmdbuffer, vk_context.vk_graphic_queue, 
-            &rd->data.vertex_buffer[last], mesh_data->vertex_data, mesh_data->vertex_size * sizeof(float));
+    result = copy_buffer_staged(&rd->data.vertex_buffer[last], mesh_data->vertex_data, mesh_data->vertex_size * sizeof(float));
     sx_assert_rel(result == VK_SUCCESS && "Could not copy vertex buffer!");
     // Index buffer creation;
-    result = create_buffer(&vk_context.device, &rd->data.index_buffer[last],
+    result = create_buffer(&rd->data.index_buffer[last],
                             VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mesh_data->index_size * sizeof(uint32_t));
 
     sx_assert_rel(result == VK_SUCCESS && "Could not create index buffer!");
-    result = copy_buffer_staged(&vk_context.device, vk_context.copy_cmdbuffer, vk_context.vk_graphic_queue, 
-            &rd->data.index_buffer[last], mesh_data->index_data, mesh_data->index_size * sizeof(uint32_t));
+    result = copy_buffer_staged(&rd->data.index_buffer[last], mesh_data->index_data, mesh_data->index_size * sizeof(uint32_t));
     sx_assert_rel(result == VK_SUCCESS && "Could not copy index buffer!");
     
     // Objects descriptor set
@@ -3727,6 +3487,7 @@ MeshInstance create_mesh_instance(Renderer* rd, Entity e, MeshData* mesh_data) {
     inst.i = last;
     return inst;
 }
+/*}}}*/
 
 void renderer_prepare(Renderer* rd) {
     setup_framebuffer(&vk_context, false);
@@ -3738,12 +3499,24 @@ void update_transform(Renderer* rd, Entity e, sx_mat4* mat) {
     int i = sx_hashtbl_find_get(rd->table, sx_hash_u32(e.handle), -1);
     ObjectsUBO ubo;
     sx_memcpy(&ubo.model, mat, sizeof(sx_mat4));
-    copy_buffer(&vk_context.device, &rd->materials.object_ubos[i],  &ubo, sizeof(sx_mat4));
+    copy_buffer(&rd->materials.object_ubos[i],  &ubo, sizeof(sx_mat4));
 }
 
 void renderer_render(Renderer* rd) {
     update_uniform_buffer();
-    vk_renderer_draw(&vk_context, 0);
+    vk_renderer_draw(&vk_context, rd, 0);
+}
+
+void renderer_resize(Renderer* rd, uint32_t width, uint32_t height) {
+    vk_context.width = width;
+    vk_context.height = height;
+    vkDeviceWaitIdle(vk_context.device.logical_device);
+    create_swapchain(width, height);
+    setup_framebuffer(&vk_context, true);
+    destroy_command_buffers();
+    create_command_buffers();
+    build_commandbuffers(&vk_context, rd);
+    vkDeviceWaitIdle(vk_context.device.logical_device);
 }
 
 void destroy_mesh_instance(Renderer* rd, Entity e, MeshInstance i) {
@@ -3754,4 +3527,95 @@ bool renderer_lookup(Renderer* rd, Entity e) {
 }
 
 void destroy_renderer(Renderer* renderer) {
+    vkDeviceWaitIdle(vk_context.device.logical_device);
+    for (int32_t i = 0; i < RENDERING_RESOURCES_SIZE; i++) {
+        if (vk_context.framebuffer[i] != VK_NULL_HANDLE) {
+            vkDestroyFramebuffer(vk_context.device.logical_device, vk_context.framebuffer[i], NULL);
+        }
+    }
+    sx_free(sx_alloc_malloc(), vk_context.framebuffer);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.global_descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.skybox_descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.terrain_descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.objects_descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.composition_descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.transparent_descriptor_pool, NULL);
+
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.global_descriptor_layout, NULL);
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.skybox_descriptor_layout, NULL);
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.terrain_descriptor_layout, NULL);
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.objects_descriptor_layout, NULL);
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.composition_descriptor_layout, NULL);
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.transparent_descriptor_layout, NULL);
+
+    destroy_command_buffers();
+    vkDestroyPipeline(vk_context.device.logical_device, vk_context.terrain_pipeline, NULL);
+    vkDestroyPipeline(vk_context.device.logical_device, vk_context.skybox_pipeline, NULL);
+    vkDestroyPipeline(vk_context.device.logical_device, vk_context.objects_pipeline, NULL);
+    vkDestroyPipeline(vk_context.device.logical_device, vk_context.composition_pipeline, NULL);
+    vkDestroyPipeline(vk_context.device.logical_device, vk_context.transparent_pipeline, NULL);
+    vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.terrain_pipeline_layout, NULL);
+    vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.skybox_pipeline_layout, NULL);
+    vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.objects_pipeline_layout, NULL);
+    vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.composition_pipeline_layout, NULL);
+    vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.transparent_pipeline_layout, NULL);
+
+    vkDestroyRenderPass(vk_context.device.logical_device, vk_context.render_pass, NULL);
+
+    clear_image(&vk_context.device, &vk_context.depth_image);
+    clear_image(&vk_context.device, &vk_context.position_image);
+    clear_image(&vk_context.device, &vk_context.normal_image);
+    clear_image(&vk_context.device, &vk_context.albedo_image);
+    clear_image(&vk_context.device, &vk_context.metallic_roughness_image);
+
+    clear_buffer(&vk_context.device, &vk_context.vertex_buffer_sky);
+    clear_buffer(&vk_context.device, &vk_context.index_buffer_sky);
+    clear_buffer(&vk_context.device, &vk_context.global_uniform_buffer);
+    clear_buffer(&vk_context.device, &vk_context.staging_buffer);
+
+    clear_texture(&vk_context.device, &vk_context.cubemap_texture);
+    clear_texture(&vk_context.device, &vk_context.lut_brdf);
+    clear_texture(&vk_context.device, &vk_context.irradiance_cube);
+    clear_texture(&vk_context.device, &vk_context.prefiltered_cube);
+
+    for (int32_t i = 0; i < renderer->data.size; i++) {
+        clear_buffer(&vk_context.device, &renderer->data.vertex_buffer[i]);
+        clear_buffer(&vk_context.device, &renderer->data.index_buffer[i]);
+    }
+    for (int32_t i = 0; i < renderer->materials.size; i++) {
+        clear_texture(&vk_context.device, &renderer->materials.base_color_texture[i]);
+        clear_texture(&vk_context.device, &renderer->materials.metallic_roughness_texture[i]);
+        clear_texture(&vk_context.device, &renderer->materials.normal_texture[i]);
+        clear_texture(&vk_context.device, &renderer->materials.occlusion_texture[i]);
+        clear_texture(&vk_context.device, &renderer->materials.emissive_texture[i]);
+        clear_buffer(&vk_context.device, &renderer->materials.object_ubos[i]);
+    }
+
+    for (int32_t i = 0; i < RENDERING_RESOURCES_SIZE; i++) {
+        vkDestroyImageView(vk_context.device.logical_device, vk_context.swapchain.image_views[i], NULL);
+    }
+
+    vkDestroySwapchainKHR(vk_context.device.logical_device, vk_context.swapchain.swapchain, NULL);
+    for (int32_t i = 0; i < RENDERING_RESOURCES_SIZE; i++) {
+        vkDestroySemaphore(vk_context.device.logical_device, vk_context.image_available_semaphore[i], NULL);
+        vkDestroySemaphore(vk_context.device.logical_device, vk_context.rendering_finished_semaphore[i], NULL);
+        vkDestroyFence(vk_context.device.logical_device, vk_context.fences[i], NULL);
+    }
+    sx_free(sx_alloc_malloc(), vk_context.image_available_semaphore);
+    sx_free(sx_alloc_malloc(), vk_context.rendering_finished_semaphore);
+    sx_free(sx_alloc_malloc(), vk_context.fences);
+
+    vkDestroyCommandPool(vk_context.device.logical_device, vk_context.graphic_queue_cmdpool, NULL);
+
+    vkDestroyDevice(vk_context.device.logical_device, NULL);
+
+    vkDestroySurfaceKHR(vk_context.vk_instance, vk_context.device.presentation_surface, NULL);
+    /*vkDestroyDebugUtilsMessengerEXT(vk_context.vk_instance, vk_context.vk_debugmessenger, NULL);*/
+    vkDestroyInstance(vk_context.vk_instance, NULL);
+    sx_free(sx_alloc_malloc(), vk_context.present_queue_cmdbuffer);
+    sx_free(renderer->alloc, renderer->data.buffer);
+    sx_free(renderer->alloc, renderer->materials.buffer);
+    sx_hashtbl_destroy(renderer->table, renderer->alloc);
+    sx_free(renderer->alloc, renderer);
+    /*sx_os_dlclose(vulkan_library);*/
 }

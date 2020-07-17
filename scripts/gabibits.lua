@@ -55,7 +55,6 @@ function gabibits_project(_name, _kind, _defines)
 				"pthread",
                 "m",
                 "dl",
-                "vulkan",
 			}
 
 		configuration { "vs* or mingw*" }

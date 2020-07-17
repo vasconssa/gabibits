@@ -32,6 +32,7 @@ typedef struct SceneGraph {
 SceneGraph* create_scenegraph(const sx_alloc* alloc, EntityManager* em);
 void scenegraph_allocate(SceneGraph* sm, uint32_t size);
 void scenegraph_grow(SceneGraph* sm);
+void scenegraph_destroy(SceneGraph* sm);
 TransformInstance create_transform_instance(SceneGraph* sm, Entity e, sx_mat4* m);
 void destroy_transform_instance(SceneGraph* sm, Entity e, TransformInstance i);
 bool scenegraph_lookup(SceneGraph* sm, Entity e);

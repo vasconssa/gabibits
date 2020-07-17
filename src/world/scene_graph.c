@@ -8,6 +8,7 @@ SceneGraph* create_scenegraph(const sx_alloc* alloc, EntityManager* em) {
     sg->alloc = alloc;
     sg->entity_manager = em;
     sg->table = sx_hashtbl_create(alloc, 1000);
+    sg->data.buffer = NULL;
     sg->data.capacity = 0;
     sg->data.size = 0;
 
@@ -47,15 +48,17 @@ void scenegraph_allocate(SceneGraph* sm, uint32_t size) {
     new_data.next_sibling =  (TransformInstance*)sx_align_ptr((void*)(new_data.first_child +  size), 0, alignof(TransformInstance));
     new_data.prev_sibling =  (TransformInstance*)sx_align_ptr((void*)(new_data.next_sibling + size), 0, alignof(TransformInstance));
 
-    sx_memcpy(new_data.entity, sm->data.entity, sm->data.size * sizeof(Entity));
-    sx_memcpy(new_data.local, sm->data.local, sm->data.size * sizeof(sx_mat4));
-    sx_memcpy(new_data.world, sm->data.world, sm->data.size * sizeof(sx_mat4));
-    sx_memcpy(new_data.parent, sm->data.parent, sm->data.size * sizeof(TransformInstance));
-    sx_memcpy(new_data.first_child, sm->data.first_child, sm->data.size * sizeof(TransformInstance));
-    sx_memcpy(new_data.next_sibling, sm->data.next_sibling, sm->data.size * sizeof(TransformInstance));
-    sx_memcpy(new_data.prev_sibling, sm->data.prev_sibling, sm->data.size * sizeof(TransformInstance));
+    if (sm->data.buffer) {
+        sx_memcpy(new_data.entity, sm->data.entity, sm->data.size * sizeof(Entity));
+        sx_memcpy(new_data.local, sm->data.local, sm->data.size * sizeof(sx_mat4));
+        sx_memcpy(new_data.world, sm->data.world, sm->data.size * sizeof(sx_mat4));
+        sx_memcpy(new_data.parent, sm->data.parent, sm->data.size * sizeof(TransformInstance));
+        sx_memcpy(new_data.first_child, sm->data.first_child, sm->data.size * sizeof(TransformInstance));
+        sx_memcpy(new_data.next_sibling, sm->data.next_sibling, sm->data.size * sizeof(TransformInstance));
+        sx_memcpy(new_data.prev_sibling, sm->data.prev_sibling, sm->data.size * sizeof(TransformInstance));
 
-    sx_free(sm->alloc, sm->data.buffer);
+        sx_free(sm->alloc, sm->data.buffer);
+    }
     sm->data = new_data;
 }
 
@@ -96,3 +99,8 @@ bool scenegraph_lookup(SceneGraph* sm, Entity e) {
 void transform(SceneGraph* sm, sx_mat4* parent, TransformInstance i) {
 }
 
+void scenegraph_destroy(SceneGraph* sm) {
+    sx_hashtbl_destroy(sm->table, sm->alloc);
+    sx_free(sm->alloc, sm->data.buffer);
+    sx_free(sm->alloc, sm);
+}

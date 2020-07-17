@@ -129,7 +129,11 @@ function toolchain(build_dir, lib_dir)
 	configuration { "debug or development", "linux-*" }
 		linkoptions {
 			--"-rdynamic"
+            --"-fsanitize=address"
 		}
+        buildoptions {
+            --"-ggdb -fsanitize=address -O1 -g -fno-omit-frame-pointer"
+        }
 
 	configuration { "linux-gcc or android-arm" }
 		buildoptions {

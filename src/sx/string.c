@@ -100,6 +100,7 @@ char* sx_strcpy(char* SX_RESTRICT dst, int dst_sz, const char* SX_RESTRICT src)
 }
 
 // https://github.com/lattera/glibc/blob/master/string/strlen.c
+ATTRIBUTE_NO_SANITIZE_ADDRESS
 int sx_strlen(const char* str)
 {
     const char* char_ptr;
@@ -151,6 +152,7 @@ int sx_strlen(const char* str)
     return -1;
 }
 
+ATTRIBUTE_NO_SANITIZE_ADDRESS
 static inline int sx__strnlen(const char* str, int _max)
 {
     const char* char_ptr;

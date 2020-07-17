@@ -40,10 +40,10 @@ typedef struct TerrainSystem {
     EntityManager* entity_manager;
     TerrainInstanceData data;
     RendererContext* context;
-    VkDescriptorPool terrain_descriptor_pool;
-    VkDescriptorSetLayout terrain_descriptor_layout;
-    VkPipelineLayout terrain_pipeline_layout;
-    VkPipeline terrain_pipeline;
+    //VkDescriptorPool terrain_descriptor_pool;
+    //VkDescriptorSetLayout terrain_descriptor_layout;
+    //VkPipelineLayout terrain_pipeline_layout;
+    //VkPipeline terrain_pipeline;
     sx_hashtbl* table;
 } TerrainSystem;
 
@@ -51,5 +51,5 @@ TerrainSystem* create_terrainsystem(const sx_alloc* alloc, EntityManager* em, Re
 void terrainsystem_allocate(TerrainSystem* sm, uint32_t size);
 void terrainsystem_grow(TerrainSystem* sm);
 TerrainInstance create_terrain_instance(TerrainSystem* sm, Entity e, TerrainTileInfo info);
-void destroy_terrain_insntace(TerrainSystem* sm, Entity e, TerrainInstance i);
+void destroy_terrainsystem(TerrainSystem* ts);
 

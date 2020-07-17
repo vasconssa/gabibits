@@ -149,6 +149,7 @@ int scene_importer(const char* path, MeshData** mesh_data, MaterialsData* materi
             }
         }
     }
+    cgltf_free(data);
     return num_meshes;
 }
 

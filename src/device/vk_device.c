@@ -21,7 +21,7 @@ extern void create_window(u_int16_t width, u_int16_t height);
 /*extern void set_fullscreen(bool full);*/
 /*extern void set_title (const char* title);*/
 
-bool process_events(InputManager* input_manager, bool vsync) {
+bool process_events(InputManager* input_manager, World* world, bool vsync) {
     bool exit = false;
     bool reset = false;
     OsEvent event;
@@ -40,7 +40,7 @@ bool process_events(InputManager* input_manager, bool vsync) {
             game_device.viewport.xmax = event.resolution.width;
             game_device.viewport.ymax = event.resolution.height;
             game_device.camera.cam.viewport = game_device.viewport;
-            /*vk_resize(event.resolution.width, event.resolution.height);*/
+            renderer_resize(world->renderer, event.resolution.width, event.resolution.height);
 			break;
 
 		case OST_EXIT:
@@ -100,7 +100,7 @@ int device_run(void* win, void* data) {
     /*struct nk_colorf bg;*/
     /*bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;*/
     game_init(world);
-    while(!process_events(game_device.input_manager, false)) {
+    while(!process_events(game_device.input_manager, world, false)) {
         /*nk_input_begin(ctx);*/
         sx_vec3 m = mouse_axis(game_device.input_manager, MA_CURSOR);
         /*nk_input_motion(ctx, (int)m.x, (int)m.y);*/
@@ -136,6 +136,11 @@ int device_run(void* win, void* data) {
         /*printf("fps: %lf\n", 1.0/dt);*/
         /*dt2 = sx_tm_sec(sx_tm_diff(t2, t));*/
     }
+    world_destroy(world);
+    sx_free(alloc, game_device.input_manager->keyboard);
+    sx_free(alloc, game_device.input_manager->mouse);
+    sx_free(alloc, game_device.input_manager->touch);
+    sx_free(alloc, game_device.input_manager);
 
     return 0;
 }

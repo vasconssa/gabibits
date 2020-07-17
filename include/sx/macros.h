@@ -75,6 +75,11 @@
 #else
 #    error "Unknown SX_COMPILER_?"
 #endif
+#if SX_COMPILER_GCC || SX_COMPILER_CLANG
+# define ATTRIBUTE_NO_SANITIZE_ADDRESS __attribute__((no_sanitize_address))
+#else
+# define ATTRIBUTE_NO_SANITIZE_ADDRESS
+#endif
 
 #if SX_COMPILER_CLANG
 #    define SX_PRAGMA_DIAGNOSTIC_PUSH_CLANG_() _Pragma("clang diagnostic push")

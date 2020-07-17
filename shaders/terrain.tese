@@ -10,6 +10,7 @@ layout(set=0, binding=0) uniform u_global_ubo {
 
 layout(set = 1, binding = 0) uniform UBO
 {
+    mat4 model;
 	vec4 frustum_planes[6];
 	vec2 viewport_dimensions;
 	float displacement_factor;

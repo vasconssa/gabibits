@@ -165,7 +165,7 @@ void* sx_os_dlopen(const char* filepath)
     return NULL;
 #else
     /*return dlopen(filepath, RTLD_LOCAL | RTLD_LAZY);*/
-    return dlopen(filepath, RTLD_NOW);
+    return dlopen(filepath, RTLD_NOW | RTLD_LOCAL);
 #endif    // SX_PLATFORM_
 }
 

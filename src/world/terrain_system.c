@@ -2,15 +2,16 @@
 #include "camera.h"
 #include "device/vk_device.h"
 
-#define VK_IMPORT_FUNC(_func) extern PFN_##_func _func
-#define VK_IMPORT_INSTANCE_FUNC VK_IMPORT_FUNC
-#define VK_IMPORT_DEVICE_FUNC   VK_IMPORT_FUNC
-VK_IMPORT
-VK_IMPORT_INSTANCE
-VK_IMPORT_DEVICE
-#undef VK_IMPORT_DEVICE_FUNC
-#undef VK_IMPORT_INSTANCE_FUNC
-#undef VK_IMPORT_FUNC
+#include "volk/volk.h"
+/*#define VK_IMPORT_FUNC(_func) extern PFN_##_func _func*/
+/*#define VK_IMPORT_INSTANCE_FUNC VK_IMPORT_FUNC*/
+/*#define VK_IMPORT_DEVICE_FUNC   VK_IMPORT_FUNC*/
+/*VK_IMPORT*/
+/*VK_IMPORT_INSTANCE*/
+/*VK_IMPORT_DEVICE*/
+/*#undef VK_IMPORT_DEVICE_FUNC*/
+/*#undef VK_IMPORT_INSTANCE_FUNC*/
+/*#undef VK_IMPORT_FUNC*/
 
 TerrainSystem* create_terrainsystem(const sx_alloc* alloc, EntityManager* em, RendererContext* context) {
     TerrainSystem* ts = sx_malloc(alloc, sizeof(*ts));
@@ -18,312 +19,9 @@ TerrainSystem* create_terrainsystem(const sx_alloc* alloc, EntityManager* em, Re
     ts->alloc = alloc;
     ts->entity_manager = em;
     ts->table = sx_hashtbl_create(alloc, 1000);
+    ts->data.buffer = NULL;
     ts->data.capacity = 0;
     ts->data.size = 0;
-
-    // terrain pool
-    {
-        VkDescriptorPoolSize pool_sizes[2];
-        pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        pool_sizes[0].descriptorCount = 1;
-        pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        pool_sizes[1].descriptorCount = 3;
-
-        VkDescriptorPoolCreateInfo descriptor_pool_create_info;
-        descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        descriptor_pool_create_info.pNext = NULL;
-        descriptor_pool_create_info.flags = 0;
-        descriptor_pool_create_info.maxSets = 1;
-        descriptor_pool_create_info.poolSizeCount = 2;
-        descriptor_pool_create_info.pPoolSizes = pool_sizes;
-        VkResult result;
-        result = vkCreateDescriptorPool(ts->context->device.logical_device, &descriptor_pool_create_info, NULL,
-                &ts->terrain_descriptor_pool);
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain descriptor pool!");
-    }
-    // Terrain layout
-    {
-        VkDescriptorSetLayoutBinding layout_bindings[4];
-        layout_bindings[0].binding = 0;
-        layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        layout_bindings[0].descriptorCount = 1;
-        layout_bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT 
-                                        | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        layout_bindings[0].pImmutableSamplers = NULL;
-        //height map
-        layout_bindings[1].binding = 1;
-        layout_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        layout_bindings[1].descriptorCount = 1;
-        layout_bindings[1].stageFlags =   VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT 
-                                        | VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        layout_bindings[1].pImmutableSamplers = NULL;
-        //texture array
-        layout_bindings[2].binding = 2;
-        layout_bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        layout_bindings[2].descriptorCount = 1;
-        layout_bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        layout_bindings[2].pImmutableSamplers = NULL;
-
-        layout_bindings[3].binding = 3;
-        layout_bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        layout_bindings[3].descriptorCount = 1;
-        layout_bindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        layout_bindings[3].pImmutableSamplers = NULL;
-
-        VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info;
-        descriptor_set_layout_create_info.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptor_set_layout_create_info.pNext = NULL;
-        descriptor_set_layout_create_info.flags = 0;
-        descriptor_set_layout_create_info.bindingCount = 4;
-        descriptor_set_layout_create_info.pBindings = layout_bindings;
-
-        VkResult result;
-        result = vkCreateDescriptorSetLayout(ts->context->device.logical_device,
-                &descriptor_set_layout_create_info, NULL, &ts->terrain_descriptor_layout);
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain descriptor layout!");
-    }
-    /* Terrain pipeline {{{*/
-    {
-        VkVertexInputBindingDescription vertex_binding_descriptions[1] = {
-            {
-                .binding = 0,
-                .stride  = 8 * sizeof(float),
-                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-            }
-        };
-        //Position, Normal, uv
-		VkVertexInputAttributeDescription vertex_attribute_descriptions[3] = {
-            {
-                .location = 0,
-                .binding = vertex_binding_descriptions[0].binding,
-                .format = VK_FORMAT_R32G32B32_SFLOAT,
-                .offset = 0
-            },
-            {
-                .location = 1,
-                .binding = vertex_binding_descriptions[0].binding,
-                .format = VK_FORMAT_R32G32B32_SFLOAT,
-                .offset = 3*sizeof(float)
-            },
-            {
-                .location = 2,
-                .binding = vertex_binding_descriptions[0].binding,
-                .format = VK_FORMAT_R32G32_SFLOAT,
-                .offset = 6*sizeof(float)
-            }
-        };
-
-		VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .vertexBindingDescriptionCount = 1,
-            .pVertexBindingDescriptions = vertex_binding_descriptions,
-            .vertexAttributeDescriptionCount = 3,
-            .pVertexAttributeDescriptions = vertex_attribute_descriptions
-        };
-
-		VkPipelineViewportStateCreateInfo viewport_state_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .viewportCount = 1,
-            .pViewports = NULL,
-            .scissorCount = 1,
-            .pScissors = NULL
-        };
-
-		VkDynamicState dynamic_states[2] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-		VkPipelineDynamicStateCreateInfo dynamic_state_create_info = { 
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .dynamicStateCount = 2,
-            .pDynamicStates = dynamic_states
-        };
-
-		VkPipelineRasterizationStateCreateInfo rasterization_state_create_info  = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .depthClampEnable = VK_FALSE,
-            .rasterizerDiscardEnable = VK_FALSE,
-            .polygonMode = VK_POLYGON_MODE_FILL,
-            .cullMode = VK_CULL_MODE_BACK_BIT,
-            .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-            .depthBiasEnable = VK_FALSE,
-            .depthBiasConstantFactor = 0.0,
-            .depthBiasClamp = 0.0,
-            .depthBiasSlopeFactor = 0.0,
-            .lineWidth = 1.0
-        };
-
-		VkPipelineMultisampleStateCreateInfo multisample_state_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-            .sampleShadingEnable = VK_FALSE,
-            .minSampleShading = 1.0,
-            .pSampleMask = NULL,
-            .alphaToCoverageEnable = VK_FALSE,
-            .alphaToOneEnable = VK_FALSE
-        };
-
-        VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .depthTestEnable = VK_TRUE,
-            .depthWriteEnable = VK_TRUE,
-            .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
-            .depthBoundsTestEnable = VK_FALSE,
-            .minDepthBounds = 0.0,
-            .maxDepthBounds = 1.0
-        };
-
-		VkPipelineColorBlendAttachmentState color_blend_attachment_state[5] = {
-            {
-                .blendEnable = VK_FALSE,
-                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .colorBlendOp = VK_BLEND_OP_ADD,
-                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .alphaBlendOp = VK_BLEND_OP_ADD,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
-                    | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-            },
-            {
-                .blendEnable = VK_FALSE,
-                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .colorBlendOp = VK_BLEND_OP_ADD,
-                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .alphaBlendOp = VK_BLEND_OP_ADD,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
-                    | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-            },
-            {
-                .blendEnable = VK_FALSE,
-                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .colorBlendOp = VK_BLEND_OP_ADD,
-                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .alphaBlendOp = VK_BLEND_OP_ADD,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
-                    | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-            },
-            {
-                .blendEnable = VK_FALSE,
-                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .colorBlendOp = VK_BLEND_OP_ADD,
-                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .alphaBlendOp = VK_BLEND_OP_ADD,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
-                    | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-            },
-            {
-                .blendEnable = VK_FALSE,
-                .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .colorBlendOp = VK_BLEND_OP_ADD,
-                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .alphaBlendOp = VK_BLEND_OP_ADD,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
-                    | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-            },
-        };
-
-		VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .attachmentCount = 5,
-            .pAttachments = color_blend_attachment_state
-        };
-
-
-        VkPipelineTessellationStateCreateInfo tessellation_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .patchControlPoints = 4
-        };
-
-        VkPipelineInputAssemblyStateCreateInfo terrain_assembly_state_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .topology = VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,
-            .primitiveRestartEnable = VK_FALSE
-        };
-
-        VkGraphicsPipelineCreateInfo pipeline_create_info = {
-            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .pVertexInputState = &vertex_input_state_create_info,
-            .pInputAssemblyState = &terrain_assembly_state_create_info,
-            .pTessellationState = &tessellation_create_info,
-            .pViewportState = &viewport_state_create_info,
-            .pRasterizationState = &rasterization_state_create_info,
-            .pMultisampleState = &multisample_state_create_info,
-            .pDepthStencilState = &depth_stencil_state_create_info,
-            .pColorBlendState = &color_blend_state_create_info,
-            .pDynamicState = &dynamic_state_create_info,
-            .renderPass = ts->context->render_pass,
-            .subpass = 0,
-            .basePipelineHandle = VK_NULL_HANDLE,
-            .basePipelineIndex = -1
-        };
-
-        VkDescriptorSetLayout descriptor_set_layouts[2] = {
-            ts->context->global_descriptor_layout, 
-            ts->terrain_descriptor_layout
-        };
-
-        VkPipelineLayoutCreateInfo layout_create_info = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .setLayoutCount = 2,
-            .pSetLayouts = descriptor_set_layouts,
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges = NULL
-        };
-
-        VkResult result;
-        result = vkCreatePipelineLayout(ts->context->device.logical_device, &layout_create_info, NULL,
-                &ts->terrain_pipeline_layout);
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain pipeline layout!");
-
-        pipeline_create_info.layout = ts->terrain_pipeline_layout;
-
-        VkPipelineShaderStageCreateInfo shader_stages[4];
-        shader_stages[0] = load_shader(ts->context->device.logical_device, "shaders/terrain.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
-        shader_stages[1] = load_shader(ts->context->device.logical_device, "shaders/terrain.tesc.spv", VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT);
-        shader_stages[2] = load_shader(ts->context->device.logical_device, "shaders/terrain.tese.spv", VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT);
-        shader_stages[3] = load_shader(ts->context->device.logical_device, "shaders/terrain.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
-
-        pipeline_create_info.stageCount = 4;
-        pipeline_create_info.pStages = shader_stages;
-
-        result = vkCreateGraphicsPipelines(ts->context->device.logical_device, VK_NULL_HANDLE, 1,
-                &pipeline_create_info, NULL, &ts->terrain_pipeline);
-        sx_assert_rel(result == VK_SUCCESS && "Could not create terrain pipeline!");
-        vkDestroyShaderModule(ts->context->device.logical_device, shader_stages[0].module, NULL);
-        vkDestroyShaderModule(ts->context->device.logical_device, shader_stages[1].module, NULL);
-        vkDestroyShaderModule(ts->context->device.logical_device, shader_stages[2].module, NULL);
-        vkDestroyShaderModule(ts->context->device.logical_device, shader_stages[3].module, NULL);
-    }
-    /*}}}*/
 
     return ts;
 }
@@ -353,17 +51,19 @@ void terrainsystem_allocate(TerrainSystem* ts, uint32_t size) {
     new_data.terrain_normal = (Texture*)sx_align_ptr((void*)(new_data.terrain_heightmap + size), 0, alignof(Texture));
     new_data.descriptor_set = (VkDescriptorSet*)sx_align_ptr((void*)(new_data.terrain_normal + size), 0, alignof(VkDescriptorSet));
 
-    sx_memcpy(new_data.entity, ts->data.entity, ts->data.size * sizeof(Entity));
-    sx_memcpy(new_data.vertex_buffer, ts->data.vertex_buffer, ts->data.size * sizeof(Buffer));
-    sx_memcpy(new_data.index_buffer, ts->data.index_buffer, ts->data.size * sizeof(Buffer));
-    sx_memcpy(new_data.terrain_ubo, ts->data.terrain_ubo, ts->data.size * sizeof(Buffer));
-    sx_memcpy(new_data.terrain_layers, ts->data.terrain_layers, ts->data.size * sizeof(Texture));
-    sx_memcpy(new_data.terrain_heightmap, ts->data.terrain_heightmap, ts->data.size * sizeof(Texture));
-    sx_memcpy(new_data.terrain_normal, ts->data.terrain_normal, ts->data.size * sizeof(Texture));
-    sx_memcpy(new_data.descriptor_set, ts->data.descriptor_set, ts->data.size * sizeof(VkDescriptorSet));
-    /*sx_memcpy(new_data.index_offsets, ts->data.index_offsets, ts->data.size * sizeof(uint32_t));*/
+    if (ts->data.buffer) {
+        sx_memcpy(new_data.entity, ts->data.entity, ts->data.size * sizeof(Entity));
+        sx_memcpy(new_data.vertex_buffer, ts->data.vertex_buffer, ts->data.size * sizeof(Buffer));
+        sx_memcpy(new_data.index_buffer, ts->data.index_buffer, ts->data.size * sizeof(Buffer));
+        sx_memcpy(new_data.terrain_ubo, ts->data.terrain_ubo, ts->data.size * sizeof(Buffer));
+        sx_memcpy(new_data.terrain_layers, ts->data.terrain_layers, ts->data.size * sizeof(Texture));
+        sx_memcpy(new_data.terrain_heightmap, ts->data.terrain_heightmap, ts->data.size * sizeof(Texture));
+        sx_memcpy(new_data.terrain_normal, ts->data.terrain_normal, ts->data.size * sizeof(Texture));
+        sx_memcpy(new_data.descriptor_set, ts->data.descriptor_set, ts->data.size * sizeof(VkDescriptorSet));
+        /*sx_memcpy(new_data.index_offsets, ts->data.index_offsets, ts->data.size * sizeof(uint32_t));*/
 
-    sx_free(ts->alloc, ts->data.buffer);
+        sx_free(ts->alloc, ts->data.buffer);
+    }
     ts->data = new_data;
 }
 
@@ -448,14 +148,16 @@ TerrainInstance create_terrain_instance(TerrainSystem* ts, Entity e, TerrainTile
                             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, sizeof(TerrainUBO));
     sx_assert_rel(result == VK_SUCCESS && "Could not create terrain uniform buffer!");
+    sx_free(ts->alloc, vertex_data_terrain);
+    sx_free(ts->alloc, index_data_terrain);
     // Terrain descriptor set
     {
         VkDescriptorSetAllocateInfo descriptor_set_allocate_info;
         descriptor_set_allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         descriptor_set_allocate_info.pNext = NULL;
-        descriptor_set_allocate_info.descriptorPool = ts->terrain_descriptor_pool;
+        descriptor_set_allocate_info.descriptorPool = ts->context->terrain_descriptor_pool;
         descriptor_set_allocate_info.descriptorSetCount = 1;
-        descriptor_set_allocate_info.pSetLayouts = &ts->terrain_descriptor_layout;
+        descriptor_set_allocate_info.pSetLayouts = &ts->context->terrain_descriptor_layout;
 
         result = vkAllocateDescriptorSets(ts->context->device.logical_device, &descriptor_set_allocate_info,
                 &ts->data.descriptor_set[last]);
@@ -583,6 +285,17 @@ TerrainInstance create_terrain_instance(TerrainSystem* ts, Entity e, TerrainTile
     return inst;
 }
 
-void destroy_terrain_insntace(TerrainSystem* sm, Entity e, TerrainInstance i) {
+void destroy_terrainsystem(TerrainSystem* ts) {
+    vkDeviceWaitIdle(ts->context->device.logical_device);
+    for (int32_t i = 0; i < ts->data.size; i++) {
+        clear_buffer(&ts->context->device, &ts->data.vertex_buffer[i]);
+        clear_buffer(&ts->context->device, &ts->data.index_buffer[i]);
+        clear_buffer(&ts->context->device, &ts->data.terrain_ubo[i]);
+        clear_texture(&ts->context->device, &ts->data.terrain_layers[i]);
+        clear_texture(&ts->context->device, &ts->data.terrain_heightmap[i]);
+        clear_texture(&ts->context->device, &ts->data.terrain_normal[i]);
+    }
+    sx_free(ts->alloc, ts->data.buffer);
+    sx_hashtbl_destroy(ts->table, ts->alloc);
+    sx_free(ts->alloc, ts);
 }
-

@@ -73,8 +73,6 @@
 			VK_IMPORT_INSTANCE_FUNC(vkDestroyDevice);                           \
 			VK_IMPORT_INSTANCE_FUNC(vkDestroySurfaceKHR);                       \
 			/* VK_EXT_debug_report */                                                  \
-			VK_IMPORT_INSTANCE_FUNC(vkCreateDebugUtilsMessengerEXT);  \
-			VK_IMPORT_INSTANCE_FUNC(vkDestroyDebugUtilsMessengerEXT); \
 			VK_IMPORT_INSTANCE_PLATFORM                                         \
 
 #define VK_IMPORT_DEVICE                                                   \
@@ -181,6 +179,129 @@
 
 /* }}} */
 
+typedef struct Device {
+    VkPhysicalDevice physical_device;
+    VkDevice logical_device;
+    VkSurfaceKHR presentation_surface;
+} Device;
+
+
+typedef struct Buffer {
+    VkBuffer buffer;
+    VkDeviceMemory memory;
+    uint32_t size;
+} Buffer;
+
+typedef struct ImageBuffer {
+	VkImage image;
+	VkDeviceMemory memory;
+	VkImageView image_view;
+    VkFormat format;
+} ImageBuffer;
+
+typedef struct Texture {
+    ImageBuffer image_buffer;
+    VkSampler sampler;
+} Texture;
+
+
+typedef struct Swapchain {
+    VkSwapchainKHR swapchain;
+    VkSurfaceFormatKHR format;
+    VkImage images[4];
+    VkImageView image_views[4];
+} Swapchain;
+
+/*typedef struct RendererContext {{{*/
+typedef struct RendererContext {
+    VkDebugUtilsMessengerEXT vk_debugmessenger;
+    VkInstance vk_instance;
+
+    Device device;
+
+    uint32_t graphic_queue_index;
+    uint32_t present_queue_index;
+    uint32_t transfer_queue_index;
+
+    VkQueue  vk_graphic_queue;
+    VkQueue  vk_present_queue;
+    VkQueue  vk_transfer_queue;
+
+    VkCommandPool present_queue_cmdpool;
+    VkCommandPool graphic_queue_cmdpool;
+    VkCommandPool transfer_queue_cmdpool;
+
+    VkCommandBuffer* present_queue_cmdbuffer;
+    VkCommandBuffer* graphic_queue_cmdbuffer;
+    VkCommandBuffer transfer_queue_cmdbuffer;
+    VkCommandBuffer copy_cmdbuffer;
+
+    VkSemaphore *image_available_semaphore;
+    VkSemaphore *rendering_finished_semaphore;
+    VkFence *fences;
+
+    Swapchain swapchain;
+    ImageBuffer depth_image;
+    /* G-Buffer */
+    ImageBuffer position_image;
+    ImageBuffer normal_image;
+    ImageBuffer albedo_image;
+    ImageBuffer metallic_roughness_image;
+
+    VkPipelineLayout terrain_pipeline_layout;
+    VkPipelineLayout skybox_pipeline_layout;
+    VkPipelineLayout objects_pipeline_layout;
+    VkPipelineLayout composition_pipeline_layout;
+    VkPipelineLayout transparent_pipeline_layout;
+    VkPipeline terrain_pipeline;
+    VkPipeline skybox_pipeline;
+    VkPipeline objects_pipeline;
+    VkPipeline composition_pipeline;
+    VkPipeline transparent_pipeline;
+
+    VkRenderPass render_pass;
+    VkFramebuffer* framebuffer;
+
+    Buffer staging_buffer;
+
+    VkDescriptorPool global_descriptor_pool;
+    VkDescriptorPool skybox_descriptor_pool;
+    VkDescriptorPool terrain_descriptor_pool;
+    VkDescriptorPool objects_descriptor_pool;
+    VkDescriptorPool composition_descriptor_pool;
+    VkDescriptorPool transparent_descriptor_pool;
+
+    VkDescriptorSetLayout global_descriptor_layout;
+    VkDescriptorSetLayout skybox_descriptor_layout;
+    VkDescriptorSetLayout terrain_descriptor_layout;
+    VkDescriptorSetLayout objects_descriptor_layout;
+    VkDescriptorSetLayout composition_descriptor_layout;
+    VkDescriptorSetLayout transparent_descriptor_layout;
+
+    VkDescriptorSet global_descriptor_set;
+    VkDescriptorSet skybox_descriptor_set;
+    VkDescriptorSet composition_descriptor_set;
+    VkDescriptorSet transparent_descriptor_set;
+
+    Buffer vertex_buffer_sky;
+    Buffer index_buffer_sky;
+    Texture cubemap_texture;
+
+    //Global shader data
+    Texture lut_brdf;
+    Texture irradiance_cube;
+    Texture prefiltered_cube;
+    Buffer global_uniform_buffer;
+
+    uint32_t width;
+    uint32_t height;
+    uint32_t attchments_width;
+    uint32_t attchments_height;
+
+} RendererContext;
+/*}}}*/
+
+
 typedef struct MeshData {
     uint32_t vertex_size;
     uint32_t index_size;
@@ -218,23 +339,15 @@ typedef struct TextureData2D {
     uint8_t* data;
 } TextureData2D;
 
-typedef struct Buffer {
-    VkBuffer buffer;
-    VkDeviceMemory memory;
-    uint32_t size;
-} Buffer;
-
-typedef struct ImageBuffer {
-	VkImage image;
-	VkDeviceMemory memory;
-	VkImageView image_view;
-    VkFormat format;
-} ImageBuffer;
-
-typedef struct Texture {
-    ImageBuffer image_buffer;
-    VkSampler sampler;
-} Texture;
+typedef struct TerrainUBO {
+    sx_mat4 model;
+    sx_vec4 frustum_planes[6];
+    sx_vec2 viewport_dimensions;
+    float displacement_factor;
+    float tessellation_factor;
+    float tessellated_edge_size;
+    float pad;
+} TerrainUBO;
 
 typedef struct ObjectsUBO {
     sx_mat4 model;
@@ -262,21 +375,25 @@ typedef struct PrimitiveData {
 } PrimitiveData;
 
 typedef struct MeshInstanceData {
-    unsigned size;              ///< Number of used entries in arrays
-    unsigned capacity;          ///< Number of allocated entries in arrays
-    void *buffer;               ///< Raw buffer for data.
+    unsigned size;              // Number of used entries in arrays
+    unsigned capacity;          // Number of allocated entries in arrays
+    void *buffer;               // Raw buffer for data.
 
-    Entity *entity;             ///< The entity owning this instance.
+    Entity *entity;             
     Buffer* vertex_buffer;
     Buffer* index_buffer;
 	VkDescriptorSet*  descriptor_set;
 } MeshInstanceData;
+
+typedef struct TerrainSystem TerrainSystem;
 
 typedef struct Renderer {
     const sx_alloc* alloc;
     EntityManager* entity_manager;
     PbrMaterials materials;
     MeshInstanceData data;
+    RendererContext* context;
+    TerrainSystem* terrain_system;
     sx_hashtbl* table;
 } Renderer;
 
@@ -289,6 +406,7 @@ void renderer_allocate(Renderer* rd, uint32_t size);
 void renderer_grow(Renderer* rd);
 void renderer_prepare(Renderer* rd);
 void renderer_render(Renderer* rd);
+void renderer_resize(Renderer* rd, uint32_t width, uint32_t height);
 void init_pbr_materials(Renderer* rd, MaterialsData* material_data, const char* path);
 MeshInstance create_mesh_instance(Renderer* rd, Entity e, MeshData* mesh_data);
 void update_transform(Renderer* rd, Entity e, sx_mat4* mat);
@@ -297,3 +415,17 @@ bool renderer_lookup(Renderer* rd, Entity e);
 void destroy_renderer(Renderer* rd);
 //void transform(sx_mat4* parent, TransformInstance i);
 
+VkResult create_buffer(Buffer* buffer, VkBufferUsageFlags usage, 
+                       VkMemoryPropertyFlags memory_properties_flags, VkDeviceSize size);
+
+VkResult copy_buffer(Buffer* dst_buffer, void* data, VkDeviceSize size);
+
+VkResult copy_buffer_staged(Buffer* dst_buffer, void* data, VkDeviceSize size);
+
+VkResult create_texture(Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, const char* filepath);
+
+VkPipelineShaderStageCreateInfo load_shader(VkDevice logical_device, const char* filnename, VkShaderStageFlagBits stage);
+
+void clear_buffer(Device* device, Buffer* buffer);
+
+void clear_texture(Device* device, Texture* texture);

@@ -132,18 +132,21 @@ InputManager* create_input_manager(const sx_alloc* allocator) {
     input_manager->mouse_last_y = INT16_MAX;
     input_manager->has_delta_axis_event = false;
 
+    const char keyboard[] = "Keyboard";
+    const char mouse[] = "Mouse";
+    const char touch[] = "Touch";
     input_manager->keyboard = create_device(allocator
-            , "Keyboard"
+            , keyboard
             , KB_COUNT
             , 0
             );
     input_manager->mouse = create_device(allocator
-            , "Mouse"
+            , mouse
             , MB_COUNT
             , MA_COUNT
             );
     input_manager->touch = create_device(allocator
-            , "Touch"
+            , touch
             , TB_COUNT
             , TA_COUNT
             );

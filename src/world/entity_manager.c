@@ -9,6 +9,7 @@ EntityManager* create_entity_manager(const sx_alloc* alloc) {
 
 void entity_manager_destroy(EntityManager* em) {
     sx_handle_destroy_pool(em->handles, em->alloc);
+    sx_free(em->alloc, em);
 }
 
 Entity entity_create(EntityManager* em) {

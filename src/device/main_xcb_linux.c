@@ -271,6 +271,7 @@ void setup_window(DeviceWindow* win, bool fullscreen) {
 		value_mask, value_list);
 
 	/* Magic code that will send notification when window is destroyed */
+    setup_atoms();
 
 	xcb_change_property(win->connection, XCB_PROP_MODE_REPLACE,
 		win->window, linux_device.wm_protocols, 4, 32, 1,
@@ -306,7 +307,7 @@ void create_window(u_int16_t width, u_int16_t height) {
     xcb_flush(win.connection);
 }
 
-static bool s_exit = false;
+bool s_exit = false;
 sx_queue_spsc* event_queue = NULL;
 
 int run() {
@@ -483,10 +484,14 @@ int run() {
                 case XCB_CONFIGURE_NOTIFY:
                 {
                     const xcb_configure_notify_event_t *cfg_event = (const xcb_configure_notify_event_t *)event;
-                    ev_item.resolution.type = OST_RESOLUTION;
-                    ev_item.resolution.width = cfg_event->width;
-                    ev_item.resolution.height = cfg_event->height;
-                    sx_queue_spsc_produce(event_queue, &ev_item);
+                    if ( cfg_event->width != win.width || cfg_event->height != win.height) {
+                        win.width = cfg_event->width;
+                        win.height = cfg_event->height;
+                        ev_item.resolution.type = OST_RESOLUTION;
+                        ev_item.resolution.width = cfg_event->width;
+                        ev_item.resolution.height = cfg_event->height;
+                        sx_queue_spsc_produce(event_queue, &ev_item);
+                    }
 
                 }
                 break;
@@ -496,6 +501,9 @@ int run() {
         free(event);
         }
 	}
+
+    sx_thread_destroy(thrd, alloc);
+    sx_queue_spsc_destroy(event_queue, alloc);
     return 0;
 }
 
