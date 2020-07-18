@@ -89,50 +89,14 @@ int device_run(void* win, void* data) {
     /*game_device.camera.cam.pos.y = 16.5;*/
     /*game_device.camera.cam.pos.z = 17.4;*/
 
-    /*struct nk_font_atlas *atlas;*/
-    /*struct nk_context* ctx = nk_gui_init();*/
-    /*struct nk_context* ctx = (struct nk_context*)data;*/
-    /*nk_font_stash_begin(&atlas);*/
-    /*struct nk_font *droid = nk_font_atlas_add_from_file(atlas, "DroidSans.ttf", 14, 0);*/
-    /*nk_style_set_font(ctx, &droid->handle);*/
-    /*nk_font_stash_end();*/
     float dt = 0;
-    /*struct nk_colorf bg;*/
-    /*bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;*/
     game_init(world);
     while(!process_events(game_device.input_manager, world, false)) {
-        /*nk_input_begin(ctx);*/
         sx_vec3 m = mouse_axis(game_device.input_manager, MA_CURSOR);
-        /*nk_input_motion(ctx, (int)m.x, (int)m.y);*/
-        /*nk_input_button(ctx, NK_BUTTON_LEFT, (int)m.x, (int)m.y, mouse_button(game_device.input_manager, MB_LEFT));*/
-        /*nk_input_button(ctx, NK_BUTTON_MIDDLE, (int)m.x, (int)m.y, mouse_button(game_device.input_manager, MB_MIDDLE));*/
-        /*nk_input_button(ctx, NK_BUTTON_RIGHT, (int)m.x, (int)m.y, mouse_button(game_device.input_manager, MB_RIGHT));*/
-        /*nk_input_end(ctx);*/
-         /* GUI */
-        /*if (nk_begin(ctx, "Demo", nk_rect(50, 50, 200, 200),*/
-            /*NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|*/
-            /*NK_WINDOW_CLOSABLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE))*/
-        /*{*/
-            /*enum {EASY, HARD};*/
-            /*static int op = EASY;*/
-
-            /*nk_layout_row_static(ctx, 30, 80, 1);*/
-            /*if (nk_button_label(ctx, "button"))*/
-                /*fprintf(stdout, "button pressed\n");*/
-            /*nk_layout_row_dynamic(ctx, 30, 2);*/
-            /*if (nk_option_label(ctx, "easy", op == EASY)) op = EASY;*/
-            /*if (nk_option_label(ctx, "hard", op == HARD)) op = HARD;*/
-            /*nk_layout_row_dynamic(ctx, 25, 1);*/
-            /*nk_property_float(ctx,"altitude", -54378137.0, &game_device.camera.cam.pos.z, 54378137.0, 1000000, 1);*/
-
-        /*}*/
-        /*nk_end(ctx);*/
         dt = (float)sx_tm_sec(sx_tm_laptime(&last_time));
         fps_camera_update(&game_device.camera, dt);
         world_update(world);
-        /*vk_renderer_draw(dt);*/
         input_manager_update(game_device.input_manager);
-        /*printf("cam_position: (%f, %f, %f)\n", game_device.camera.cam.pos.x, game_device.camera.cam.pos.y, game_device.camera.cam.pos.z);*/
         /*printf("fps: %lf\n", 1.0/dt);*/
         /*dt2 = sx_tm_sec(sx_tm_diff(t2, t));*/
     }

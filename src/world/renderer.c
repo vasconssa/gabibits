@@ -46,6 +46,7 @@ SX_PRAGMA_DIAGNOSTIC_POP()
 /*#undef VK_IMPORT_FUNC*/
 
 int RENDERING_RESOURCES_SIZE = 2;
+int swapchain_image_count = 0;
 
 typedef struct GlobaUBO {
     sx_mat4 projection;
@@ -2110,6 +2111,41 @@ VkResult setup_framebuffer(RendererContext* context, bool update_attachments) {
         update_composition_descriptors(context);
     }
 
+    /*VkImageView attachments[6];*/
+	/*VkFramebufferCreateInfo framebuffer_create_info;*/
+	/*framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;*/
+	/*framebuffer_create_info.pNext = NULL;*/
+	/*framebuffer_create_info.flags = 0;*/
+	/*framebuffer_create_info.renderPass = vk_context.render_pass;*/
+	/*framebuffer_create_info.attachmentCount = 6;*/
+	/*framebuffer_create_info.pAttachments = attachments;*/
+	/*framebuffer_create_info.width = vk_context.width;*/
+	/*framebuffer_create_info.height = vk_context.height;*/
+	/*framebuffer_create_info.layers = 1;*/
+    
+    /*for (int32_t i = 0; i < RENDERING_RESOURCES_SIZE; i++) {*/
+        /*attachments[0] = vk_context.swapchain.image_views[i];*/
+        /*attachments[1] = vk_context.position_image.image_view;*/
+        /*attachments[2] = vk_context.normal_image.image_view;*/
+        /*attachments[3] = vk_context.albedo_image.image_view;*/
+        /*attachments[4] = vk_context.metallic_roughness_image.image_view;*/
+        /*attachments[5] = vk_context.depth_image.image_view;*/
+		/*result = vkCreateFramebuffer(context->device.logical_device, &framebuffer_create_info, NULL,*/
+			/*&vk_context.framebuffer[i]);*/
+        /*sx_assert_rel(result == VK_SUCCESS && "Could not create framebuffer!");*/
+    /*}*/
+
+    return result;
+}
+/*}}}*/
+
+VkResult frame(Renderer* rd, uint32_t resource_index, uint32_t image_index) {
+    VkResult result;
+    RendererContext* context = rd->context;
+    if (vk_context.framebuffer[resource_index] != VK_NULL_HANDLE) {
+        vkDestroyFramebuffer(context->device.logical_device, vk_context.framebuffer[resource_index], NULL);
+    }
+
     VkImageView attachments[6];
 	VkFramebufferCreateInfo framebuffer_create_info;
 	framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -2121,22 +2157,200 @@ VkResult setup_framebuffer(RendererContext* context, bool update_attachments) {
 	framebuffer_create_info.width = vk_context.width;
 	framebuffer_create_info.height = vk_context.height;
 	framebuffer_create_info.layers = 1;
-    
-    for (int32_t i = 0; i < RENDERING_RESOURCES_SIZE; i++) {
-        attachments[0] = vk_context.swapchain.image_views[i];
-        attachments[1] = vk_context.position_image.image_view;
-        attachments[2] = vk_context.normal_image.image_view;
-        attachments[3] = vk_context.albedo_image.image_view;
-        attachments[4] = vk_context.metallic_roughness_image.image_view;
-        attachments[5] = vk_context.depth_image.image_view;
-	    result = vkCreateFramebuffer(context->device.logical_device, &framebuffer_create_info, NULL,
-			&vk_context.framebuffer[i]);
-        sx_assert_rel(result == VK_SUCCESS && "Could not create framebuffer!");
+
+    attachments[0] = vk_context.swapchain.image_views[image_index];
+    attachments[1] = vk_context.position_image.image_view;
+    attachments[2] = vk_context.normal_image.image_view;
+    attachments[3] = vk_context.albedo_image.image_view;
+    attachments[4] = vk_context.metallic_roughness_image.image_view;
+    attachments[5] = vk_context.depth_image.image_view;
+    result = vkCreateFramebuffer(context->device.logical_device, &framebuffer_create_info, NULL,
+        &vk_context.framebuffer[resource_index]);
+    sx_assert_rel(result == VK_SUCCESS && "Could not create framebuffer!");
+
+	VkCommandBufferBeginInfo command_buffer_begin_info;
+	command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	command_buffer_begin_info.pNext = NULL;
+	command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	command_buffer_begin_info.pInheritanceInfo = NULL;
+
+    VkClearValue clear_value[6];
+    VkClearColorValue color = { {0.0f, 0.0f, 0.0f, 0.0f} };
+    VkClearDepthStencilValue depth = {1.0, 0.0};
+    clear_value[0].color = color;
+    clear_value[1].color = color;
+    clear_value[2].color = color;
+    clear_value[3].color = color;
+    clear_value[4].color = color;
+    clear_value[5].depthStencil = depth;
+
+    VkRect2D render_area;
+    render_area.offset.x = 0;
+    render_area.offset.y = 0;
+    render_area.extent.width = context->width;
+    render_area.extent.height = context->height;
+
+    VkRenderPassBeginInfo render_pass_begin_info;
+    render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_begin_info.pNext = NULL;
+    render_pass_begin_info.renderPass = context->render_pass;
+    render_pass_begin_info.renderArea = render_area;
+    render_pass_begin_info.clearValueCount = 6;
+    render_pass_begin_info.pClearValues = clear_value;
+
+    render_pass_begin_info.framebuffer = context->framebuffer[resource_index];
+    vkBeginCommandBuffer(context->graphic_queue_cmdbuffer[resource_index],
+            &command_buffer_begin_info);
+    VkImageSubresourceRange image_subresource_range;
+    image_subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_subresource_range.baseMipLevel = 0;
+    image_subresource_range.levelCount = 1;
+    image_subresource_range.baseArrayLayer = 0;
+    image_subresource_range.layerCount = 1;
+
+
+    if (context->vk_graphic_queue != context->vk_present_queue) {
+        VkImageMemoryBarrier barrier_from_present_to_draw;
+        barrier_from_present_to_draw.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier_from_present_to_draw.pNext = NULL;
+        barrier_from_present_to_draw.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        barrier_from_present_to_draw.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier_from_present_to_draw.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier_from_present_to_draw.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier_from_present_to_draw.srcQueueFamilyIndex = context->present_queue_index;
+        barrier_from_present_to_draw.dstQueueFamilyIndex = context->graphic_queue_index;
+        barrier_from_present_to_draw.image = context->swapchain.images[image_index];
+        barrier_from_present_to_draw.subresourceRange = image_subresource_range;
+        vkCmdPipelineBarrier(context->graphic_queue_cmdbuffer[resource_index],
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1,
+                &barrier_from_present_to_draw);
     }
 
+
+    VkViewport viewport;
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = context->width;
+    viewport.height = context->height;
+    viewport.minDepth = 0.0;
+    viewport.maxDepth = 1.0;
+
+    VkRect2D scissor;
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = context->width;
+    scissor.extent.height = context->height;
+
+    vkCmdBeginRenderPass(context->graphic_queue_cmdbuffer[resource_index], &render_pass_begin_info,
+            VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdSetViewport(context->graphic_queue_cmdbuffer[resource_index], 0, 1, &viewport);
+    vkCmdSetScissor(context->graphic_queue_cmdbuffer[resource_index], 0, 1, &scissor);
+    VkDeviceSize offset = 0;
+
+    VkDescriptorSet descriptor_sets[2];
+    descriptor_sets[0] = context->global_descriptor_set;
+
+    vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[resource_index], 
+            VK_PIPELINE_BIND_POINT_GRAPHICS, context->skybox_pipeline_layout,
+            0, 1, &context->global_descriptor_set, 0, NULL);
+    // First Sub pass
+    {
+
+        // draw terrain
+        vkCmdBindPipeline(context->graphic_queue_cmdbuffer[resource_index],
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->terrain_pipeline);
+        for (uint32_t idx = 0; idx < rd->terrain_system->data.size; idx++) {
+            vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[resource_index],
+                    VK_PIPELINE_BIND_POINT_GRAPHICS, context->terrain_pipeline_layout,
+                    1, 1, &rd->terrain_system->data.descriptor_set[idx], 0, NULL);
+            vkCmdBindVertexBuffers(context->graphic_queue_cmdbuffer[resource_index], 0, 1,
+                    &rd->terrain_system->data.vertex_buffer[idx].buffer, &offset);
+            vkCmdBindIndexBuffer(context->graphic_queue_cmdbuffer[resource_index], 
+                    rd->terrain_system->data.index_buffer[idx].buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(context->graphic_queue_cmdbuffer[resource_index], 
+                    rd->terrain_system->data.index_buffer[idx].size/(sizeof(uint32_t)), 1, 0, 0, 0);
+        }
+
+        //draw objects
+        vkCmdBindPipeline(context->graphic_queue_cmdbuffer[resource_index],
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->objects_pipeline);
+        for (uint32_t obj = 0; obj < rd->data.size; obj++) {
+            vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[resource_index], 
+                    VK_PIPELINE_BIND_POINT_GRAPHICS, context->objects_pipeline_layout,
+                    1, 1, &rd->data.descriptor_set[obj], 0, NULL);
+            vkCmdBindVertexBuffers(context->graphic_queue_cmdbuffer[resource_index], 0, 1,
+                    &rd->data.vertex_buffer[obj].buffer, &offset);
+            vkCmdBindIndexBuffer(context->graphic_queue_cmdbuffer[resource_index], 
+                    rd->data.index_buffer[obj].buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(context->graphic_queue_cmdbuffer[resource_index], 
+                    rd->data.index_buffer[obj].size/(sizeof(uint32_t)), 1, 0, 0, 0);
+        }
+
+    }
+    // Second subpass
+    {
+        vkCmdNextSubpass(context->graphic_queue_cmdbuffer[resource_index], VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[resource_index], 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->composition_pipeline_layout,
+                1, 1, &context->composition_descriptor_set, 0, NULL);
+        vkCmdBindPipeline(context->graphic_queue_cmdbuffer[resource_index], 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->composition_pipeline);
+        vkCmdDraw(context->graphic_queue_cmdbuffer[resource_index], 4, 1, 0, 0);
+    }
+    //Third subpass
+    {
+        vkCmdNextSubpass(context->graphic_queue_cmdbuffer[resource_index], VK_SUBPASS_CONTENTS_INLINE);
+        // draw skybox
+        vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[resource_index], 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->skybox_pipeline_layout,
+                1, 1, &context->skybox_descriptor_set, 0, NULL);
+        vkCmdBindPipeline(context->graphic_queue_cmdbuffer[resource_index],
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->skybox_pipeline);
+        vkCmdBindVertexBuffers(context->graphic_queue_cmdbuffer[resource_index], 0, 1,
+                &context->vertex_buffer_sky.buffer, &offset);
+        vkCmdBindIndexBuffer(context->graphic_queue_cmdbuffer[resource_index], 
+                context->index_buffer_sky.buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(context->graphic_queue_cmdbuffer[resource_index], 
+                context->index_buffer_sky.size/(sizeof(uint32_t)), 1, 0, 0, 0);
+
+        vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[resource_index], 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->transparent_pipeline_layout,
+                1, 1, &context->transparent_descriptor_set, 0, NULL);
+        vkCmdBindPipeline(context->graphic_queue_cmdbuffer[resource_index], 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, context->transparent_pipeline);
+        vkCmdDraw(context->graphic_queue_cmdbuffer[resource_index], 4, 1, 0, 0);
+
+        if (rd->gui) {
+            gui_draw(rd->gui, resource_index);
+        }
+    }
+
+    vkCmdEndRenderPass(context->graphic_queue_cmdbuffer[resource_index]);
+
+    if (context->vk_graphic_queue != context->vk_present_queue) {
+        VkImageMemoryBarrier barrier_from_draw_to_present;
+        barrier_from_draw_to_present.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier_from_draw_to_present.pNext = NULL;
+        barrier_from_draw_to_present.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        barrier_from_draw_to_present.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        barrier_from_draw_to_present.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        barrier_from_draw_to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier_from_draw_to_present.srcQueueFamilyIndex = context->graphic_queue_index;
+        barrier_from_draw_to_present.dstQueueFamilyIndex = context->present_queue_index;
+        barrier_from_draw_to_present.image = context->swapchain.images[image_index];
+        barrier_from_draw_to_present.subresourceRange = image_subresource_range;
+        vkCmdPipelineBarrier(context->graphic_queue_cmdbuffer[resource_index],
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1,
+                &barrier_from_draw_to_present);
+    }
+
+     result = vkEndCommandBuffer(context->graphic_queue_cmdbuffer[resource_index]);
+     sx_assert_rel(result == VK_SUCCESS && "Could not record command buffers!");
     return result;
 }
-/*}}}*/
 
 /* build_commandbuffers(RendererContext* context) {{{*/
 VkResult build_commandbuffers(RendererContext* context, Renderer* rd) {
@@ -2341,6 +2555,7 @@ bool vk_renderer_draw(RendererContext* context, Renderer* rd, float dt) {
 			printf("Problem occurred during swap chain image acquisition!\n");
 			return false;
 	}
+    frame(rd, resource_index, image_index);
 
 	VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
 
@@ -2510,6 +2725,7 @@ VkResult create_swapchain( uint32_t width, uint32_t height) {
     vkGetSwapchainImagesKHR(vk_context.device.logical_device, vk_context.swapchain.swapchain, &image_count, NULL);
     vkGetSwapchainImagesKHR(vk_context.device.logical_device, vk_context.swapchain.swapchain, &image_count,
             vk_context.swapchain.images);
+    swapchain_image_count = image_count;
 
     VkImageSubresourceRange image_subresource_range;
     image_subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2537,7 +2753,7 @@ VkResult create_swapchain( uint32_t width, uint32_t height) {
         sx_assert_rel(result == VK_SUCCESS);
     }
     vk_context.swapchain.format = surface_format;
-    RENDERING_RESOURCES_SIZE = image_count;
+    /*RENDERING_RESOURCES_SIZE = image_count;*/
     return result;
 }
 /*}}}*/
@@ -3851,8 +4067,8 @@ MeshInstance create_mesh_instance(Renderer* rd, Entity e, MeshData* mesh_data) {
 /*}}}*/
 
 void renderer_prepare(Renderer* rd) {
-    setup_framebuffer(&vk_context, false);
-    build_commandbuffers(&vk_context, rd);
+    /*setup_framebuffer(&vk_context, false);*/
+    /*build_commandbuffers(&vk_context, rd);*/
     update_uniform_buffer();
 }
 
@@ -3866,20 +4082,22 @@ void update_transform(Renderer* rd, Entity e, sx_mat4* mat) {
 void renderer_render(Renderer* rd) {
     update_uniform_buffer();
     vk_renderer_draw(&vk_context, rd, 0);
-    vkDeviceWaitIdle(vk_context.device.logical_device);
-    build_commandbuffers(&vk_context, rd);
+    /*vkDeviceWaitIdle(vk_context.device.logical_device);*/
+    /*build_commandbuffers(&vk_context, rd);*/
 }
 
 void renderer_resize(Renderer* rd, uint32_t width, uint32_t height) {
     vk_context.width = width;
     vk_context.height = height;
-    vkDeviceWaitIdle(vk_context.device.logical_device);
+    /*vkDeviceWaitIdle(vk_context.device.logical_device);*/
     create_swapchain(width, height);
-    setup_framebuffer(&vk_context, true);
-    destroy_command_buffers();
-    create_command_buffers();
-    build_commandbuffers(&vk_context, rd);
-    vkDeviceWaitIdle(vk_context.device.logical_device);
+    /*setup_framebuffer(&vk_context, true);*/
+    create_attachments(rd->context);
+    update_composition_descriptors(rd->context);
+    /*destroy_command_buffers();*/
+    /*create_command_buffers();*/
+    /*build_commandbuffers(&vk_context, rd);*/
+    /*vkDeviceWaitIdle(vk_context.device.logical_device);*/
 }
 
 void destroy_mesh_instance(Renderer* rd, Entity e, MeshInstance i) {
@@ -3958,7 +4176,7 @@ void destroy_renderer(Renderer* renderer) {
         clear_buffer(&vk_context.device, &renderer->materials.object_ubos[i]);
     }
 
-    for (int32_t i = 0; i < RENDERING_RESOURCES_SIZE; i++) {
+    for (int32_t i = 0; i < swapchain_image_count; i++) {
         vkDestroyImageView(vk_context.device.logical_device, vk_context.swapchain.image_views[i], NULL);
     }
 
