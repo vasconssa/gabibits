@@ -5,7 +5,7 @@
 
 function gabibits_project(_name, _kind, _defines)
 
-	project ("gabibits" .. _name)
+	project ("gabibits_wingsuit" .. _name)
 		kind (_kind)
 
 		includedirs {

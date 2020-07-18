@@ -111,7 +111,7 @@ void world_update(World* world) {
     nk_input_button(ctx, NK_BUTTON_RIGHT, (int)m.x, (int)m.y, mouse_button(device()->input_manager, MB_RIGHT));
     nk_input_end(ctx);
 
-    if (nk_begin(&world->gui->data.gui_context, "Gabibits", nk_rect(50, 50, 200, 200),
+    if (nk_begin(&world->gui->data.gui_context, "Gabibits Wingsuit", nk_rect(50, 50, 200, 200),
         NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
         NK_WINDOW_CLOSABLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE)) {
         enum {EASY, HARD};
