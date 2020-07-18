@@ -6,6 +6,7 @@
 #include "world/renderer.h"
 #include "world/scene_graph.h"
 #include "world/terrain_system.h"
+#include "world/gui.h"
 #include "camera.h"
 
 typedef struct World {
@@ -14,6 +15,7 @@ typedef struct World {
     Renderer* renderer;
     SceneGraph* scene_graph;
     TerrainSystem* terrain_system;
+    Gui* gui;
     Entity* entities;
     FpsCamera* cameras;
 } World;

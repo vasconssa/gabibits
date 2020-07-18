@@ -1539,7 +1539,7 @@ NK_API struct nk_context* nk_gui_init() {
 	{
 
         result = create_buffer(vk_context.device.physical_device, vk_context.device.logical_device, &nk_gui.vertex_buffer, 
-                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, MAX_VERTEX_BUFFER);
 
 		if(result != VK_SUCCESS) {

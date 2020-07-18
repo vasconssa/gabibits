@@ -15,3 +15,4 @@ typedef struct Entity {
 INSTANCE_ID(TransformInstance);
 INSTANCE_ID(MeshInstance);
 INSTANCE_ID(TerrainInstance);
+INSTANCE_ID(GuiInstance);

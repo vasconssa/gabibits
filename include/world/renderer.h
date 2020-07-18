@@ -253,11 +253,13 @@ typedef struct RendererContext {
     VkPipelineLayout objects_pipeline_layout;
     VkPipelineLayout composition_pipeline_layout;
     VkPipelineLayout transparent_pipeline_layout;
+    VkPipelineLayout nk_gui_pipeline_layout;
     VkPipeline terrain_pipeline;
     VkPipeline skybox_pipeline;
     VkPipeline objects_pipeline;
     VkPipeline composition_pipeline;
     VkPipeline transparent_pipeline;
+    VkPipeline nk_gui_pipeline;
 
     VkRenderPass render_pass;
     VkFramebuffer* framebuffer;
@@ -270,6 +272,7 @@ typedef struct RendererContext {
     VkDescriptorPool objects_descriptor_pool;
     VkDescriptorPool composition_descriptor_pool;
     VkDescriptorPool transparent_descriptor_pool;
+    VkDescriptorPool nk_gui_descriptor_pool;
 
     VkDescriptorSetLayout global_descriptor_layout;
     VkDescriptorSetLayout skybox_descriptor_layout;
@@ -277,6 +280,7 @@ typedef struct RendererContext {
     VkDescriptorSetLayout objects_descriptor_layout;
     VkDescriptorSetLayout composition_descriptor_layout;
     VkDescriptorSetLayout transparent_descriptor_layout;
+    VkDescriptorSetLayout nk_gui_descriptor_layout;
 
     VkDescriptorSet global_descriptor_set;
     VkDescriptorSet skybox_descriptor_set;
@@ -355,6 +359,7 @@ typedef struct ObjectsUBO {
     sx_vec4 metallic_roughness;
 } ObjectsUBO;
 
+
 typedef struct PbrMaterials {
     unsigned size;              ///< Number of used entries in arrays
     unsigned capacity;          ///< Number of allocated entries in arrays
@@ -386,6 +391,7 @@ typedef struct MeshInstanceData {
 } MeshInstanceData;
 
 typedef struct TerrainSystem TerrainSystem;
+typedef struct Gui Gui;
 
 typedef struct Renderer {
     const sx_alloc* alloc;
@@ -394,6 +400,7 @@ typedef struct Renderer {
     MeshInstanceData data;
     RendererContext* context;
     TerrainSystem* terrain_system;
+    Gui* gui;
     sx_hashtbl* table;
 } Renderer;
 
@@ -423,6 +430,8 @@ VkResult copy_buffer(Buffer* dst_buffer, void* data, VkDeviceSize size);
 VkResult copy_buffer_staged(Buffer* dst_buffer, void* data, VkDeviceSize size);
 
 VkResult create_texture(Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, const char* filepath);
+VkResult create_texture_from_data(Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, 
+        const void* data, uint32_t width, uint32_t height);
 
 VkPipelineShaderStageCreateInfo load_shader(VkDevice logical_device, const char* filnename, VkShaderStageFlagBits stage);
 

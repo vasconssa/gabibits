@@ -12,10 +12,12 @@
 #include "sx/io.h"
 #include "resource/gltf_importer.h"
 #include "world/terrain_system.h"
+#include "world/gui.h"
 
 #define VOLK_IMPLEMENTATION
 #include "volk/volk.h"
 
+#define MAX_NKTEXTURES 8
 
 #define DDSKTX_IMPLEMENT
 #define DDSKTX_API static
@@ -143,15 +145,15 @@ bool vk_renderer_init(DeviceWindow win) {
         "VK_LAYER_KHRONOS_validation"
     };
 
-    uint32_t num_extensions = 2;
+    uint32_t num_extensions = 3;
     const char *extensions[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(VK_USE_PLATFORM_XCB_KHR)
-        VK_KHR_XCB_SURFACE_EXTENSION_NAME
+        VK_KHR_XCB_SURFACE_EXTENSION_NAME,
 #endif
-        /*VK_EXT_DEBUG_UTILS_EXTENSION_NAME*/
+        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
     };
     const sx_alloc* alloc = sx_alloc_malloc();
 
@@ -228,14 +230,12 @@ bool vk_renderer_init(DeviceWindow win) {
 
         VkInstanceCreateInfo inst_create_info;
         inst_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        /*inst_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&dbg_create_info;*/
-        inst_create_info.pNext = NULL;
+        inst_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&dbg_create_info;
+        /*inst_create_info.pNext = NULL;*/
         inst_create_info.flags = 0;
         inst_create_info.pApplicationInfo = &app_info;
-        /*inst_create_info.enabledLayerCount = num_layers;*/
-        /*inst_create_info.ppEnabledLayerNames = validation_layers;*/
-        inst_create_info.enabledLayerCount = 0;
-        inst_create_info.ppEnabledLayerNames = NULL;
+        inst_create_info.enabledLayerCount = num_layers;
+        inst_create_info.ppEnabledLayerNames = validation_layers;
         inst_create_info.enabledExtensionCount = num_extensions;
         inst_create_info.ppEnabledExtensionNames = extensions;
 
@@ -252,8 +252,8 @@ bool vk_renderer_init(DeviceWindow win) {
             sx_assert_rel(imported && "Could not import instance functions");
 
 
-        /*result = vkCreateDebugUtilsMessengerEXT(vk_context.vk_instance, &dbg_create_info, NULL, &vk_context.vk_debugmessenger);*/
-        /*sx_assert_rel(result == VK_SUCCESS && "Could not create Debug Utils Messenger");*/
+        result = vkCreateDebugUtilsMessengerEXT(vk_context.vk_instance, &dbg_create_info, NULL, &vk_context.vk_debugmessenger);
+        sx_assert_rel(result == VK_SUCCESS && "Could not create Debug Utils Messenger");
     }
     /* }}} */
 
@@ -400,8 +400,8 @@ bool vk_renderer_init(DeviceWindow win) {
         device_create_info.pQueueCreateInfos = &queue_create_info[0];
         device_create_info.enabledExtensionCount = 1;
         device_create_info.ppEnabledExtensionNames = device_extensions;
-        /*device_create_info.enabledLayerCount = 1;*/
-        /*device_create_info.ppEnabledLayerNames = validation_layers;*/
+        device_create_info.enabledLayerCount = 1;
+        device_create_info.ppEnabledLayerNames = validation_layers;
         device_create_info.enabledLayerCount = 0;
         device_create_info.ppEnabledLayerNames = NULL;
         device_create_info.pEnabledFeatures = &device_features;
@@ -850,6 +850,23 @@ bool vk_renderer_init(DeviceWindow win) {
                     &vk_context.transparent_descriptor_pool);
             sx_assert_rel(result == VK_SUCCESS && "Could not create composition descriptor pool!");
         }
+        // nk_gui pool
+        {
+            VkDescriptorPoolSize pool_sizes[1];
+            pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            pool_sizes[0].descriptorCount = MAX_NKTEXTURES;
+
+            VkDescriptorPoolCreateInfo descriptor_pool_create_info;
+            descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            descriptor_pool_create_info.pNext = NULL;
+            descriptor_pool_create_info.flags = 0;
+            descriptor_pool_create_info.maxSets = 1;
+            descriptor_pool_create_info.poolSizeCount = 1;
+            descriptor_pool_create_info.pPoolSizes = pool_sizes;
+            result = vkCreateDescriptorPool(vk_context.device.logical_device, &descriptor_pool_create_info, NULL,
+                    &vk_context.nk_gui_descriptor_pool);
+            sx_assert_rel(result == VK_SUCCESS && "Could not create nk_gui descriptor pool!");
+        }
         /* }}} */
 
         /* Descriptor Set Layout Creation {{{*/
@@ -1058,6 +1075,27 @@ bool vk_renderer_init(DeviceWindow win) {
 
             result = vkCreateDescriptorSetLayout(vk_context.device.logical_device,
                     &descriptor_set_layout_create_info, NULL, &vk_context.transparent_descriptor_layout);
+            sx_assert_rel(result == VK_SUCCESS && "Could not create transparent descriptor layout!");
+        }
+        // Nk gui
+        {
+            VkDescriptorSetLayoutBinding layout_bindings[1];
+            layout_bindings[0].binding = 0;
+            layout_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            layout_bindings[0].descriptorCount = MAX_NKTEXTURES;
+            layout_bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            layout_bindings[0].pImmutableSamplers = NULL;
+
+            VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info;
+            descriptor_set_layout_create_info.sType =
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            descriptor_set_layout_create_info.pNext = NULL;
+            descriptor_set_layout_create_info.flags = 0;
+            descriptor_set_layout_create_info.bindingCount = 1;
+            descriptor_set_layout_create_info.pBindings = layout_bindings;
+
+            result = vkCreateDescriptorSetLayout(vk_context.device.logical_device,
+                    &descriptor_set_layout_create_info, NULL, &vk_context.nk_gui_descriptor_layout);
             sx_assert_rel(result == VK_SUCCESS && "Could not create transparent descriptor layout!");
         }
         /* }}}*/
@@ -1388,7 +1426,142 @@ bool vk_renderer_init(DeviceWindow win) {
         };
 
         /*}}}*/
+        /* Nk gui pipeline {{{*/
+        {
+            VkVertexInputBindingDescription vertex_binding_descriptions[1] = {
+                {
+                    .binding = 0,
+                    .stride  = sizeof(nk_vertex),
+                    .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+                }
+            };
+            //Position, Normal, uv
+            VkVertexInputAttributeDescription vertex_attribute_descriptions[3] = {
+                {
+                    .location = 0,
+                    .binding = vertex_binding_descriptions[0].binding,
+                    .format = VK_FORMAT_R32G32_SFLOAT,
+                    .offset = offsetof(nk_vertex, position)
+                },
+                {
+                    .location = 1,
+                    .binding = vertex_binding_descriptions[0].binding,
+                    .format = VK_FORMAT_R32G32_SFLOAT,
+                    .offset = offsetof(nk_vertex, uv)
+                },
+                {
+                    .location = 2,
+                    .binding = vertex_binding_descriptions[0].binding,
+                    .format = VK_FORMAT_R8G8B8A8_UINT,
+                    .offset = offsetof(nk_vertex, col)
+                }
+            };
 
+            VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .vertexBindingDescriptionCount = 1,
+                .pVertexBindingDescriptions = vertex_binding_descriptions,
+                .vertexAttributeDescriptionCount = 3,
+                .pVertexAttributeDescriptions = vertex_attribute_descriptions
+            };
+
+            VkPipelineRasterizationStateCreateInfo rasterization_state_create_info  = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .depthClampEnable = VK_FALSE,
+                .rasterizerDiscardEnable = VK_FALSE,
+                .polygonMode = VK_POLYGON_MODE_FILL,
+                .cullMode = VK_CULL_MODE_BACK_BIT,
+                .frontFace = VK_FRONT_FACE_CLOCKWISE,
+                .depthBiasEnable = VK_FALSE,
+                .depthBiasConstantFactor = 0.0,
+                .depthBiasClamp = 0.0,
+                .depthBiasSlopeFactor = 0.0,
+                .lineWidth = 1.0
+            };
+
+            VkPipelineColorBlendAttachmentState color_blend_attachment_state = {
+                .blendEnable = VK_TRUE,
+                .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                .colorBlendOp = VK_BLEND_OP_ADD,
+                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .alphaBlendOp = VK_BLEND_OP_ADD,
+                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT 
+                    | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+            };
+            VkPipelineColorBlendStateCreateInfo color_blend_state_create_info = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .attachmentCount = 1,
+                .pAttachments = &color_blend_attachment_state
+            };
+
+            VkGraphicsPipelineCreateInfo pipeline_create_info = {
+                .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .pVertexInputState = &vertex_input_state_create_info,
+                .pInputAssemblyState = &input_assembly_state_create_info,
+                .pTessellationState = NULL,
+                .pViewportState = &viewport_state_create_info,
+                .pRasterizationState = &rasterization_state_create_info,
+                .pMultisampleState = &multisample_state_create_info,
+                .pDepthStencilState = &depth_stencil_state_create_info,
+                .pColorBlendState = &color_blend_state_create_info,
+                .pDynamicState = &dynamic_state_create_info,
+                .renderPass = vk_context.render_pass,
+                .subpass = 2,
+                .basePipelineHandle = VK_NULL_HANDLE,
+                .basePipelineIndex = -1
+            };
+
+            VkDescriptorSetLayout descriptor_set_layouts[2] = {
+                vk_context.global_descriptor_layout, 
+                vk_context.nk_gui_descriptor_layout
+            };
+
+            VkPushConstantRange push_constants_range = {
+                .offset = 0,
+                .size = sizeof(GuiPushConstantBlock),
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
+            };
+
+            VkPipelineLayoutCreateInfo layout_create_info = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .setLayoutCount = 2,
+                .pSetLayouts = descriptor_set_layouts,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &push_constants_range
+            };
+
+            result = vkCreatePipelineLayout(vk_context.device.logical_device, &layout_create_info, NULL,
+                    &vk_context.nk_gui_pipeline_layout);
+            sx_assert_rel(result == VK_SUCCESS && "Could not create nk_gui pipeline layout!");
+
+            pipeline_create_info.layout = vk_context.nk_gui_pipeline_layout;
+
+            VkPipelineShaderStageCreateInfo shader_stages[2];
+            shader_stages[0] = load_shader(vk_context.device.logical_device, "shaders/nk_gui.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+            shader_stages[1] = load_shader(vk_context.device.logical_device, "shaders/nk_gui.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+
+            pipeline_create_info.stageCount = 2;
+            pipeline_create_info.pStages = shader_stages;
+
+            result = vkCreateGraphicsPipelines(vk_context.device.logical_device, VK_NULL_HANDLE, 1,
+                    &pipeline_create_info, NULL, &vk_context.nk_gui_pipeline);
+            sx_assert_rel(result == VK_SUCCESS && "Could not create nk_gui pipeline!");
+            vkDestroyShaderModule(vk_context.device.logical_device, shader_stages[0].module, NULL);
+            vkDestroyShaderModule(vk_context.device.logical_device, shader_stages[1].module, NULL);
+        }
+        /*}}}*/
         /* Skybox pipeline {{{*/
         {
             VkDescriptorSetLayout descriptor_set_layouts[2] = {
@@ -1803,6 +1976,7 @@ bool vk_renderer_init(DeviceWindow win) {
             vkDestroyShaderModule(vk_context.device.logical_device, shader_stages[1].module, NULL);
         }
         /*}}}*/
+
     }
     /*}}}*/
 
@@ -2106,9 +2280,12 @@ VkResult build_commandbuffers(RendererContext* context, Renderer* rd) {
 
             vkCmdBindDescriptorSets(context->graphic_queue_cmdbuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS, context->transparent_pipeline_layout,
                     1, 1, &context->transparent_descriptor_set, 0, NULL);
-            vkCmdBindPipeline(context->graphic_queue_cmdbuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS, context->composition_pipeline);
             vkCmdBindPipeline(context->graphic_queue_cmdbuffer[i], VK_PIPELINE_BIND_POINT_GRAPHICS, context->transparent_pipeline);
             vkCmdDraw(context->graphic_queue_cmdbuffer[i], 4, 1, 0, 0);
+
+            if (rd->gui) {
+                gui_draw(rd->gui, i);
+            }
         }
 
         vkCmdEndRenderPass(context->graphic_queue_cmdbuffer[i]);
@@ -2497,6 +2674,190 @@ void clear_buffer(Device* device, Buffer* buffer) {
 void clear_texture(Device* device, Texture* texture) {
     vkDestroySampler(device->logical_device, texture->sampler, NULL);
     clear_image(device, &texture->image_buffer);
+}
+
+VkResult create_texture_from_data(Texture* texture, VkSamplerAddressMode sampler_address_mode, const sx_alloc* alloc, 
+        const void* data, uint32_t width, uint32_t height) {
+    clear_texture(&vk_context.device, texture);
+    VkResult result;
+    Buffer staging;
+    uint32_t size = width * height * 4;
+    result = create_buffer(&staging, VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, size);
+    sx_assert_rel(result == VK_SUCCESS && "Could not create staging buffer!");
+
+    void *staging_buffer_memory_pointer;
+    result = vkMapMemory(vk_context.device.logical_device, staging.memory, 0,
+            size, 0, &staging_buffer_memory_pointer);
+    sx_assert_rel(result == VK_SUCCESS && "Could not map memory and upload data to staging buffer!");
+    sx_memcpy(staging_buffer_memory_pointer, data, size);
+    vkUnmapMemory(vk_context.device.logical_device, staging.memory);
+    uint32_t offset = 0;
+    VkExtent3D extent;
+    extent.width = width;
+    extent.height = height;
+    extent.depth = 1;
+    VkImageCreateInfo image_create_info;
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.pNext = NULL;
+    image_create_info.flags = 0;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.extent = extent;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_create_info.queueFamilyIndexCount = 0;
+    image_create_info.pQueueFamilyIndices = NULL;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    result = vkCreateImage(vk_context.device.logical_device, &image_create_info, NULL,
+            &texture->image_buffer.image);
+    sx_assert_rel(result == VK_SUCCESS && "Could not create texture image!");
+
+    VkMemoryRequirements image_memory_requirements;
+    vkGetImageMemoryRequirements(vk_context.device.logical_device, texture->image_buffer.image, &image_memory_requirements);
+
+    VkMemoryAllocateInfo memory_allocate_info;
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocate_info.pNext = NULL;
+    memory_allocate_info.allocationSize = image_memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = get_memory_type(image_memory_requirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    result = vkAllocateMemory(vk_context.device.logical_device, &memory_allocate_info, NULL,
+            &texture->image_buffer.memory);
+
+    sx_assert_rel(result == VK_SUCCESS && "Could not allocate memory for texture!");
+
+    result = vkBindImageMemory(vk_context.device.logical_device, texture->image_buffer.image, texture->image_buffer.memory, 0);
+    sx_assert_rel(result == VK_SUCCESS && "Could not bind memory image!");
+
+    VkImageSubresourceRange image_subresource_range;
+    image_subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_subresource_range.baseMipLevel = 0;
+    image_subresource_range.levelCount = 1;
+    image_subresource_range.baseArrayLayer = 0;
+    image_subresource_range.layerCount = 1;
+    VkCommandBuffer cmdbuffer = vk_context.copy_cmdbuffer;;
+
+    VkCommandBufferBeginInfo command_buffer_begin_info;
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.pNext = NULL;
+    command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    command_buffer_begin_info.pInheritanceInfo = NULL;
+
+    VkBufferImageCopy buffer_image_copy_info = {};
+    buffer_image_copy_info.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    buffer_image_copy_info.imageSubresource.mipLevel = 0;
+    buffer_image_copy_info.imageSubresource.baseArrayLayer = 0;
+    buffer_image_copy_info.imageSubresource.layerCount = 1;
+    buffer_image_copy_info.imageExtent.width = width;
+    buffer_image_copy_info.imageExtent.height = height;
+    buffer_image_copy_info.imageExtent.depth = 1;
+    buffer_image_copy_info.bufferOffset = offset;
+
+    vkBeginCommandBuffer(cmdbuffer, &command_buffer_begin_info);
+
+    {
+        VkImageMemoryBarrier image_memory_barrier = {};
+        image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        image_memory_barrier.pNext = NULL;
+        image_memory_barrier.srcAccessMask = 0;
+        image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        image_memory_barrier.image = texture->image_buffer.image;
+        image_memory_barrier.subresourceRange = image_subresource_range;
+        vkCmdPipelineBarrier(cmdbuffer,
+                VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0,
+                NULL, 1, &image_memory_barrier);
+    }
+
+    vkCmdCopyBufferToImage(cmdbuffer, staging.buffer,
+            texture->image_buffer.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+            &buffer_image_copy_info);
+    {
+        VkImageMemoryBarrier image_memory_barrier = {};
+        image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        image_memory_barrier.pNext = NULL;
+        image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_memory_barrier.image = texture->image_buffer.image;
+        image_memory_barrier.subresourceRange = image_subresource_range;
+        vkCmdPipelineBarrier( cmdbuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1,
+                &image_memory_barrier);
+    }
+
+    vkEndCommandBuffer(cmdbuffer);
+
+    VkSubmitInfo submit_info;
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = NULL;
+    submit_info.waitSemaphoreCount = 0;
+    submit_info.pWaitSemaphores = NULL;
+    submit_info.pWaitDstStageMask = NULL;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cmdbuffer;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = NULL;
+
+    VkFenceCreateInfo fence_create_info;
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.flags = 0;
+    fence_create_info.pNext = NULL;
+    VkFence fence;
+    vkCreateFence(vk_context.device.logical_device, &fence_create_info, NULL, &fence);
+
+    result = vkQueueSubmit(vk_context.vk_graphic_queue, 1, &submit_info, fence);
+    sx_assert_rel(result == VK_SUCCESS && "Could not submit command buffer!");
+    result = vkWaitForFences(vk_context.device.logical_device, 1, &fence, VK_TRUE, 1000000000);
+    sx_assert_rel(result == VK_SUCCESS && "Could not submit command buffer!");
+    vkDestroyFence(vk_context.device.logical_device, fence, NULL);
+
+    // Create sampler
+    VkSamplerCreateInfo samplerCreateInfo = {};
+    samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+    samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCreateInfo.addressModeU = sampler_address_mode;
+    samplerCreateInfo.addressModeV = samplerCreateInfo.addressModeU;
+    samplerCreateInfo.addressModeW = samplerCreateInfo.addressModeU;
+    samplerCreateInfo.mipLodBias = 0.0;
+    samplerCreateInfo.maxAnisotropy = 1.0;
+    samplerCreateInfo.anisotropyEnable = VK_FALSE;
+    samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerCreateInfo.minLod = 0.0;
+    samplerCreateInfo.maxLod = 0.0;
+    samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    result = vkCreateSampler(vk_context.device.logical_device, &samplerCreateInfo, NULL, &texture->sampler);
+    sx_assert_rel(result == VK_SUCCESS && "Could not create texture sampler!");
+
+    // Create image view
+    VkImageViewCreateInfo viewCreateInfo = {};
+    viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewCreateInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+    viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewCreateInfo.subresourceRange = image_subresource_range;
+    viewCreateInfo.subresourceRange.layerCount = 1;
+    viewCreateInfo.image = texture->image_buffer.image;
+    result = vkCreateImageView(vk_context.device.logical_device, &viewCreateInfo, NULL, &texture->image_buffer.image_view);
+    sx_assert_rel(result == VK_SUCCESS && "Could not create texture image view!");
+
+    // Clean up staging resources
+    vkFreeMemory(vk_context.device.logical_device, staging.memory, NULL);
+    vkDestroyBuffer(vk_context.device.logical_device, staging.buffer, NULL);
+
+    return result;
 }
 
 /* create_texture(Device* device, Texture* texture, const sx_alloc* alloc, const char* filepath) {{{*/
@@ -3505,6 +3866,8 @@ void update_transform(Renderer* rd, Entity e, sx_mat4* mat) {
 void renderer_render(Renderer* rd) {
     update_uniform_buffer();
     vk_renderer_draw(&vk_context, rd, 0);
+    vkDeviceWaitIdle(vk_context.device.logical_device);
+    build_commandbuffers(&vk_context, rd);
 }
 
 void renderer_resize(Renderer* rd, uint32_t width, uint32_t height) {
@@ -3540,6 +3903,7 @@ void destroy_renderer(Renderer* renderer) {
     vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.objects_descriptor_pool, NULL);
     vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.composition_descriptor_pool, NULL);
     vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.transparent_descriptor_pool, NULL);
+    vkDestroyDescriptorPool(vk_context.device.logical_device, vk_context.nk_gui_descriptor_pool, NULL);
 
     vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.global_descriptor_layout, NULL);
     vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.skybox_descriptor_layout, NULL);
@@ -3547,6 +3911,7 @@ void destroy_renderer(Renderer* renderer) {
     vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.objects_descriptor_layout, NULL);
     vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.composition_descriptor_layout, NULL);
     vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.transparent_descriptor_layout, NULL);
+    vkDestroyDescriptorSetLayout(vk_context.device.logical_device, vk_context.nk_gui_descriptor_layout, NULL);
 
     destroy_command_buffers();
     vkDestroyPipeline(vk_context.device.logical_device, vk_context.terrain_pipeline, NULL);
@@ -3554,11 +3919,13 @@ void destroy_renderer(Renderer* renderer) {
     vkDestroyPipeline(vk_context.device.logical_device, vk_context.objects_pipeline, NULL);
     vkDestroyPipeline(vk_context.device.logical_device, vk_context.composition_pipeline, NULL);
     vkDestroyPipeline(vk_context.device.logical_device, vk_context.transparent_pipeline, NULL);
+    vkDestroyPipeline(vk_context.device.logical_device, vk_context.nk_gui_pipeline, NULL);
     vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.terrain_pipeline_layout, NULL);
     vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.skybox_pipeline_layout, NULL);
     vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.objects_pipeline_layout, NULL);
     vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.composition_pipeline_layout, NULL);
     vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.transparent_pipeline_layout, NULL);
+    vkDestroyPipelineLayout(vk_context.device.logical_device, vk_context.nk_gui_pipeline_layout, NULL);
 
     vkDestroyRenderPass(vk_context.device.logical_device, vk_context.render_pass, NULL);
 
@@ -3610,7 +3977,7 @@ void destroy_renderer(Renderer* renderer) {
     vkDestroyDevice(vk_context.device.logical_device, NULL);
 
     vkDestroySurfaceKHR(vk_context.vk_instance, vk_context.device.presentation_surface, NULL);
-    /*vkDestroyDebugUtilsMessengerEXT(vk_context.vk_instance, vk_context.vk_debugmessenger, NULL);*/
+    vkDestroyDebugUtilsMessengerEXT(vk_context.vk_instance, vk_context.vk_debugmessenger, NULL);
     vkDestroyInstance(vk_context.vk_instance, NULL);
     sx_free(sx_alloc_malloc(), vk_context.present_queue_cmdbuffer);
     sx_free(renderer->alloc, renderer->data.buffer);

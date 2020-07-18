@@ -1,5 +1,6 @@
 #include "world/world.h"
 #include "resource/gltf_importer.h"
+#include "device/vk_device.h"
 #include "sx/string.h"
 #include <stdio.h>
 
@@ -11,6 +12,8 @@ World* create_world(const sx_alloc* alloc) {
     world->renderer = create_renderer(alloc, world->entity_manager);
     world->terrain_system = create_terrainsystem(alloc, world->entity_manager, world->renderer->context);
     world->renderer->terrain_system = world->terrain_system;
+    world->gui = create_gui(alloc, world->renderer->context);
+    world->renderer->gui = world->gui;
 
 
     return world;
@@ -58,15 +61,80 @@ void game_init(World* world) {
     world->entities[0] = entity_create(world->entity_manager);
     create_terrain_instance(world->terrain_system, world->entities[0], terrain_info);
     
+    struct nk_font_atlas* atlas;
+
+    struct nk_color table[NK_COLOR_COUNT];
+    table[NK_COLOR_TEXT] = nk_rgba(210, 210, 210, 255);
+    table[NK_COLOR_WINDOW] = nk_rgba(57, 67, 71, 215);
+    table[NK_COLOR_HEADER] = nk_rgba(51, 51, 56, 220);
+    table[NK_COLOR_BORDER] = nk_rgba(46, 46, 46, 255);
+    table[NK_COLOR_BUTTON] = nk_rgba(48, 83, 111, 255);
+    table[NK_COLOR_BUTTON_HOVER] = nk_rgba(58, 93, 121, 255);
+    table[NK_COLOR_BUTTON_ACTIVE] = nk_rgba(63, 98, 126, 255);
+    table[NK_COLOR_TOGGLE] = nk_rgba(50, 58, 61, 255);
+    table[NK_COLOR_TOGGLE_HOVER] = nk_rgba(45, 53, 56, 255);
+    table[NK_COLOR_TOGGLE_CURSOR] = nk_rgba(48, 83, 111, 255);
+    table[NK_COLOR_SELECT] = nk_rgba(57, 67, 61, 255);
+    table[NK_COLOR_SELECT_ACTIVE] = nk_rgba(48, 83, 111, 255);
+    table[NK_COLOR_SLIDER] = nk_rgba(50, 58, 61, 255);
+    table[NK_COLOR_SLIDER_CURSOR] = nk_rgba(48, 83, 111, 245);
+    table[NK_COLOR_SLIDER_CURSOR_HOVER] = nk_rgba(53, 88, 116, 255);
+    table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = nk_rgba(58, 93, 121, 255);
+    table[NK_COLOR_PROPERTY] = nk_rgba(50, 58, 61, 255);
+    table[NK_COLOR_EDIT] = nk_rgba(50, 58, 61, 225);
+    table[NK_COLOR_EDIT_CURSOR] = nk_rgba(210, 210, 210, 255);
+    table[NK_COLOR_COMBO] = nk_rgba(50, 58, 61, 255);
+    table[NK_COLOR_CHART] = nk_rgba(50, 58, 61, 255);
+    table[NK_COLOR_CHART_COLOR] = nk_rgba(48, 83, 111, 255);
+    table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = nk_rgba(255, 0, 0, 255);
+    table[NK_COLOR_SCROLLBAR] = nk_rgba(50, 58, 61, 255);
+    table[NK_COLOR_SCROLLBAR_CURSOR] = nk_rgba(48, 83, 111, 255);
+    table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = nk_rgba(53, 88, 116, 255);
+    table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = nk_rgba(58, 93, 121, 255);
+    table[NK_COLOR_TAB_HEADER] = nk_rgba(48, 83, 111, 255);
+    nk_style_from_table(&world->gui->data.gui_context, table);
+    /*nk_style_default(&world->gui->data.gui_context);*/
+    nk_font_stash_begin(world->gui, &atlas);
+    nk_font_stash_end(world->gui);
     renderer_prepare(world->renderer);
+
 }
 
 void world_update(World* world) {
+    struct nk_context* ctx = &world->gui->data.gui_context;
+
+    nk_input_begin(ctx);
+    sx_vec3 m = mouse_axis(device()->input_manager, MA_CURSOR);
+    nk_input_motion(ctx, (int)m.x, (int)m.y);
+    nk_input_button(ctx, NK_BUTTON_LEFT, (int)m.x, (int)m.y, mouse_button(device()->input_manager, MB_LEFT));
+    nk_input_button(ctx, NK_BUTTON_MIDDLE, (int)m.x, (int)m.y, mouse_button(device()->input_manager, MB_MIDDLE));
+    nk_input_button(ctx, NK_BUTTON_RIGHT, (int)m.x, (int)m.y, mouse_button(device()->input_manager, MB_RIGHT));
+    nk_input_end(ctx);
+
+    if (nk_begin(&world->gui->data.gui_context, "Gabibits", nk_rect(50, 50, 200, 200),
+        NK_WINDOW_BORDER|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE|
+        NK_WINDOW_CLOSABLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_TITLE)) {
+        enum {EASY, HARD};
+        static int op = EASY;
+
+        nk_layout_row_static(&world->gui->data.gui_context, 30, 80, 1);
+        if (nk_button_label(&world->gui->data.gui_context, "button"))
+            fprintf(stdout, "button pressed\n");
+        nk_layout_row_dynamic(&world->gui->data.gui_context, 30, 2);
+        if (nk_option_label(&world->gui->data.gui_context, "easy", op == EASY)) op = EASY;
+        if (nk_option_label(&world->gui->data.gui_context, "hard", op == HARD)) op = HARD;
+    }
+    nk_end(&world->gui->data.gui_context);
+    
+    gui_update(world->gui);
     renderer_render(world->renderer);
+    nk_clear(&world->gui->data.gui_context);
+    /*nk_buffer_clear(&world->gui->data.cmds);*/
 }
 
 void world_destroy(World* world) {
     destroy_terrainsystem(world->terrain_system);
+    destroy_gui(world->gui);
     destroy_renderer(world->renderer);
     scenegraph_destroy(world->scene_graph);
     entity_manager_destroy(world->entity_manager);
