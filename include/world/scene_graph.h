@@ -37,4 +37,9 @@ TransformInstance create_transform_instance(SceneGraph* sm, Entity e, sx_mat4* m
 void destroy_transform_instance(SceneGraph* sm, Entity e, TransformInstance i);
 bool scenegraph_lookup(SceneGraph* sm, Entity e);
 void transform(SceneGraph* sm, sx_mat4* parent, TransformInstance i);
+sx_mat4 get_local_matrix(SceneGraph* sm, Entity e);
+void set_local_position(SceneGraph* sm, Entity e, sx_vec3 position);
+sx_vec3 get_local_position(SceneGraph* sm, Entity e);
+void set_local_rotation(SceneGraph* sm, Entity e, sx_vec3 rotation);
+sx_vec3 get_local_rotation(SceneGraph* sm, Entity e);
 

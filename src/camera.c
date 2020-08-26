@@ -21,14 +21,14 @@
                              const sx_vec3 up)
 {
     // TODO: figure UP vector out, I hacked up vector (in the matrix) to make it work correctly
-    cam->forward = sx_vec3_norm(sx_vec3_sub(target, pos));
-    cam->right = sx_vec3_norm(sx_vec3_cross(cam->forward, up));
-    cam->up = sx_vec3_cross(cam->right, cam->forward);
+    cam->forward = sx_vec3_norm(sx_vec3_sub(pos, target));
+    cam->right = sx_vec3_norm(sx_vec3_cross(up, cam->forward));
+    cam->up = sx_vec3_cross(cam->forward, cam->right);
     cam->pos = pos;
 
-    sx_mat4 m = sx_mat4v(sx_vec4f(cam->right.x, cam->right.y, cam->right.z, 0),
-                         sx_vec4f(-cam->up.x, -cam->up.y, -cam->up.z, 0),
-                         sx_vec4f(cam->forward.x, cam->forward.y, cam->forward.z, 0), SX_VEC4_ZERO);
+    sx_mat4 m = sx_mat4v(sx_vec4f(cam->right.x, cam->up.x, cam->forward.x, 0),
+                         sx_vec4f(cam->right.y, cam->up.y, cam->forward.y, 0),
+                         sx_vec4f(cam->right.z, cam->up.z, cam->forward.z, 0), SX_VEC4_ZERO);
     cam->quat = sx_mat4_quat(&m);
 }
 

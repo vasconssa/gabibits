@@ -22,5 +22,5 @@ typedef struct World {
 
 World* create_world(const sx_alloc* alloc);
 void game_init(World* world);
-void world_update(World* world);
+void world_update(World* world, float dt);
 void world_destroy(World* world);

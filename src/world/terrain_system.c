@@ -88,7 +88,7 @@ TerrainInstance create_terrain_instance(TerrainSystem* ts, Entity e, TerrainTile
         sx_vec2 uv;
     } Vertex;
 
-    float mul = 1.0 * 64.0;
+    float mul = 1.0 * 1024.0 ;
 
     const uint32_t patch_size =  64;
     const uint32_t uv_scale = 1.0;

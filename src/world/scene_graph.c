@@ -2,6 +2,7 @@
 #include "world/scene_graph.h"
 #include "sx/os.h"
 #include "sx/allocator.h"
+#include "stdio.h"
 
 SceneGraph* create_scenegraph(const sx_alloc* alloc, EntityManager* em) {
     SceneGraph* sg = sx_malloc(alloc, sizeof(*sg));
@@ -83,6 +84,7 @@ TransformInstance create_transform_instance(SceneGraph* sm, Entity e, sx_mat4* m
     sm->data.prev_sibling[last].i = UINT32_MAX;
 
     sx_hashtbl_add(sm->table, sx_hash_u32(e.handle), last);
+    printf("transforminstance: %u\n\n", last);
 
     TransformInstance inst;
     inst.i = last;
@@ -97,6 +99,40 @@ bool scenegraph_lookup(SceneGraph* sm, Entity e) {
 }
 
 void transform(SceneGraph* sm, sx_mat4* parent, TransformInstance i) {
+}
+
+sx_mat4 get_local_matrix(SceneGraph* sm, Entity e) {
+    TransformInstance i;
+    i.i = sx_hashtbl_find_get(sm->table, sx_hash_u32(e.handle), -1);
+    return sm->data.local[i.i];
+}
+
+void set_local_position(SceneGraph* sm, Entity e, sx_vec3 position) {
+    TransformInstance i;
+    i.i = sx_hashtbl_find_get(sm->table, sx_hash_u32(e.handle), -1);
+    sm->data.local[i.i].col4 = sx_vec4f(position.x, position.y, position.z, 1.0);
+}
+
+sx_vec3 get_local_position(SceneGraph* sm, Entity e) {
+    TransformInstance i;
+    i.i = sx_hashtbl_find_get(sm->table, sx_hash_u32(e.handle), -1);
+    sx_vec4 p =  sm->data.local[i.i].col4;
+    return sx_vec3f(p.x, p.y, p.z);
+}
+
+void set_local_rotation(SceneGraph* sm, Entity e, sx_vec3 rotation) {
+    TransformInstance i;
+    i.i = sx_hashtbl_find_get(sm->table, sx_hash_u32(e.handle), -1);
+    sx_vec4 p =  sm->data.local[i.i].col4;
+    sm->data.local[i.i] = sx_mat4_rotateZYX(rotation.x, rotation.y, rotation.z);
+    sm->data.local[i.i].col4 = sx_vec4f(p.x, p.y, p.z, 1.0);
+}
+
+sx_vec3 get_local_rotation(SceneGraph* sm, Entity e) {
+    TransformInstance i;
+    i.i = sx_hashtbl_find_get(sm->table, sx_hash_u32(e.handle), -1);
+    sx_quat q = sx_mat4_quat(&sm->data.local[i.i]);
+    return sx_quat_toeuler(q);
 }
 
 void scenegraph_destroy(SceneGraph* sm) {

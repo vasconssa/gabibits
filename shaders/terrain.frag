@@ -98,7 +98,7 @@ float fog(float density)
 // See http://www.thetenthplanet.de/archives/1180
 vec3 perturb_normal()
 {
-    vec2 uv = tes_uv;
+    vec2 uv = tes_uv * 8.0;
     uv.y = 1.0 * uv.y;
 	vec3 tangent_normal = texture(sampler_normal,  uv).xyz * 2.0 - 1.0;
 

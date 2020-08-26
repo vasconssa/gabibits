@@ -538,7 +538,7 @@ bool vk_renderer_init(DeviceWindow win) {
 
 	{
         /*create_cubemap(&vk_context.device, &vk_context.cubemap_texture);*/
-        create_texture(&vk_context.cubemap_texture, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/cubemap/sky.ktx");
+        create_texture(&vk_context.cubemap_texture, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, alloc, "misc/sky/sky.ktx");
     }
     /*}}}*/
     
@@ -2748,6 +2748,9 @@ VkResult create_swapchain( uint32_t width, uint32_t height) {
         image_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
         image_create_info.subresourceRange = image_subresource_range;
 
+        if (&vk_context.swapchain.image_views[i] != VK_NULL_HANDLE) {
+            vkDestroyImageView(vk_context.device.logical_device, vk_context.swapchain.image_views[i], NULL);
+        }
         result = vkCreateImageView(vk_context.device.logical_device, &image_create_info, NULL,
                 &vk_context.swapchain.image_views[i]);
         sx_assert_rel(result == VK_SUCCESS);
@@ -4089,7 +4092,7 @@ void renderer_render(Renderer* rd) {
 void renderer_resize(Renderer* rd, uint32_t width, uint32_t height) {
     vk_context.width = width;
     vk_context.height = height;
-    /*vkDeviceWaitIdle(vk_context.device.logical_device);*/
+    vkDeviceWaitIdle(vk_context.device.logical_device);
     create_swapchain(width, height);
     /*setup_framebuffer(&vk_context, true);*/
     create_attachments(rd->context);

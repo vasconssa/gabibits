@@ -79,10 +79,10 @@ int device_run(void* win, void* data) {
 
     World* world = create_world(alloc);
     game_device.input_manager = create_input_manager(alloc);
-    fps_init(&game_device.camera, 60, game_device.viewport, 1.1, 8096.0);
+    fps_init(&game_device.camera, 60, game_device.viewport, 1.1, 50096.0);
     /*game_device.camera.cam.pos.z = -14378137;*/
     game_device.camera.cam.pos.x = 1800.26;
-    game_device.camera.cam.pos.y = 1205.66;
+    game_device.camera.cam.pos.y = 5205.66;
     game_device.camera.cam.pos.z = 1899.47;
 
     /*game_device.camera.cam.pos.x = 15.2;*/
@@ -95,7 +95,7 @@ int device_run(void* win, void* data) {
         sx_vec3 m = mouse_axis(game_device.input_manager, MA_CURSOR);
         dt = (float)sx_tm_sec(sx_tm_laptime(&last_time));
         fps_camera_update(&game_device.camera, dt);
-        world_update(world);
+        world_update(world, dt);
         input_manager_update(game_device.input_manager);
         /*printf("fps: %lf\n", 1.0/dt);*/
         /*dt2 = sx_tm_sec(sx_tm_diff(t2, t));*/
